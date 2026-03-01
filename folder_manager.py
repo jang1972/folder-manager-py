@@ -48,7 +48,7 @@ class FolderManager:
     def __init__(self, dry_run=False):
         self.dry_run = dry_run
         self.current_os = self._check_os()
-        self.folder_pattern = re.compile(r'^(\d+)\.(.*)$')
+        self.folder_pattern = re.compile(r'^(\d+)\_(.*)$')
 
     def _check_os(self):
         if 'linux' in sys.platform: return 'Linux'
@@ -81,7 +81,7 @@ class FolderManager:
         return numbered_folders
 
     def create_folder(self, target_num, suffix):
-        new_name = f"{target_num:02d}.{suffix}"
+        new_name = f"{target_num:02d}_{suffix}"
         if any(res in new_name.upper() for res in WINDOWS_RESERVED):
             print(f"❌ 오류: '{new_name}'은 예약어 포함으로 생성 불가.")
             return
