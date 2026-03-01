@@ -4,6 +4,14 @@
 # Made by Michelle
 # With Gemini
 # Edit Tool is VSC, Kate
+# 번호 기반 폴더 관리 및 자동 정렬 도구 (Folder Manager)
+# A number-based folder management and auto-alignment tool.
+# Copyright (C) 2026 Michelle
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
 
 import os
 import sys
