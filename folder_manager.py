@@ -143,7 +143,7 @@ class FolderManager:
         match = self.folder_pattern.match(old_name)
         if match:
             suffix = match.group(2)
-            new_name = f"{new_num:02d}.{suffix}"
+            new_name = f"{new_num:02d}_{suffix}"
             self.log(f"이름 변경: {old_name} -> {new_name}", emoji="📝")
             self.safe_execute(os.rename, old_name, new_name)
 
