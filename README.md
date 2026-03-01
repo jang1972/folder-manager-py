@@ -7,11 +7,17 @@ A number-based folder management and auto-alignment tool.
 
 ## 🚀 개요 (Overview)
 
-이 프로젝트는 프로그래밍 입문자가 취미로 만든 간단한 파이썬 스크립트입니다. 한국 사용자들을 위해 한국어 주석이 포함되어 있습니다.
-This project is a simple Python script created as a hobby by a programming beginner. It includes Korean comments for Korean-speaking users.
+이 프로젝트는 프로그래밍 뉴비가 취미로 만든 간단한 파이썬 스크립트입니다. 이 뉴비는 한국인이기에 한국어 주석이 포함 되어 있습니다.
+This project is a simple Python script created as a hobby by a programming newbie. Since this newbie is Korean, Korean comments are included.
 
 이 코드는 Google Gemini 3.0-Flash 모델의 도움을 받아 생성 및 최적화되었습니다.
 This code was generated and optimized with the assistance of Google Gemini 3.0-Flash.
+
+---
+
+## 왜 만들었는가 ( Why was it created ? )
+유튜브 쇼츠에서 '구글 직원의 폴더 관리법' 이런 것만 던져주고 자동화 기법은 안 알려줘서 한번 만들어 보았습니다.
+I saw that YouTube shorts only showed things like 'How Google Employees Manage Folders' but didn't teach any automation techniques, so I tried making one.
 
 ---
 
