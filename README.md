@@ -33,11 +33,15 @@ The fundamental copyright for the characters and designs belongs to **miHoYo Net
 ---
 
 ## 🛠️ 주요 기능 (Main Features)
+- **Make**: 번호를 지정하여 새 폴더를 생성하며, 해당 번호 이상의 기존 폴더들을 자동으로 뒤로 밀어냅니다. (Create a new folder at a specific index and automatically shift subsequent folders forward.)
 
-- **Make**: 번호를 지정하여 새 폴더를 생성하고, 기존 폴더들의 번호를 자동으로 밀어냅니다. (Create a new folder and shift existing folder numbers.)
-- **Archive (rm)**: 폴더를 보관함으로 이동시키고 빈 번호를 채웁니다. (Move folders to the Archive and fill the gap.)
-- **Fill**: 중간에 비어 있는 폴더 번호를 01번부터 순차적으로 다시 정렬합니다. (Re-align folder numbers sequentially starting from 01.)
-- **Dry-run**: 실제 파일 변경 전에 작업 내용을 미리 확인합니다. (Preview changes before they are actually applied.)
+- **Archive (rm)**:  지정한 번호의 폴더를 타임스탬프와 함께 보관 처리하고, 뒤에 남은 폴더들의 번호를 앞으로 당겨 빈자리를 채웁니다. (Archive a folder with a timestamp and shift subsequent folders back to fill the gap.)
+
+- **Fill**: 중간에 누락된 번호가 있다면 01번부터 순차적으로 다시 정렬하여 구조를 최적화합니다. (Re-align all folder numbers sequentially starting from 01 to optimize the structure.)
+
+- **Dry-run**: --dry-run 플래그를 통해 실제 파일 시스템을 변경하기 전, 수행될 작업을 콘솔에서 미리 안전하게 확인할 수 있습니다. (Safely preview all planned operations in the console using the --dry-run flag before any actual file system changes occur.)
+
+- **Smart Parsing**: argparse를 도입하여 더 전문적인 CLI 인터페이스를 제공하며, 01.Name 형식의 명명 규칙을 지원합니다. (Features a professional CLI interface via argparse and supports the 01.Name naming convention.)
 
 ---
 
