@@ -6,7 +6,7 @@
 # Edit Tool is VSC, Kate
 # 번호 기반 폴더 관리 및 자동 정렬 도구 (Folder Manager)
 # A number-based folder management and auto-alignment tool.
-# Copyright (C) 2026 Michelle
+# Copyright (C) 2026 Michelle (jang1972)
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
