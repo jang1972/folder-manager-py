@@ -4,6 +4,8 @@
 
 A number-based folder management and auto-alignment tool.
 
+License: This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) file for details.
+
 ---
 
 ## 🚀 개요 (Overview)
