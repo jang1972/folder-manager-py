@@ -54,7 +54,8 @@ ASCII_ART = r"""
 ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
 """
 
-WINDOWS_RESERVED = ["CON", "PRN", "AUX", "NUL", "COM1", "LPT1"]
+WINDOWS_RESERVED = ["CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "LPT1", "LPT2"]
+FORBIDDEN_CHARS = re.compile(r'[\\/:*?"<>|]') # POSIX/Windows 금지 특수문자
 CREATE_KW = ['생성', '만들기', 'mk', 'make', 'mkdir']
 DELETE_KW = ['삭제', '지우기', 'del', 'rm', 'rmdir', 'archive']
 FILL_KW = ['fill', 'fillup', '채우기', '정리']
@@ -76,7 +77,6 @@ class FolderManager:
         print(f"{prefix} {message}")
 
     def safe_execute(self, func, *args, **kwargs):
-        """실제 작업을 수행하거나 드라이런 메시지를 출력하는 래퍼"""
         if self.dry_run:
             return True
         try:
@@ -85,6 +85,18 @@ class FolderManager:
         except Exception as e:
             print(f"❌ 오류 발생: {e}")
             return False
+
+    def is_valid_suffix(self, suffix):
+        """폴더 이름(접미사)의 유효성을 검사합니다."""
+        if FORBIDDEN_CHARS.search(suffix):
+            print(f"❌ 오류: 폴더명에 금지 문자(\\ / : * ? \" < > |)가 포함되어 있습니다.")
+            return False
+
+        upper_suffix = suffix.upper()
+        if any(res == upper_suffix or upper_suffix.startswith(res + ".") for res in WINDOWS_RESERVED):
+            print(f"❌ 오류: '{suffix}'은(는) 시스템 예약어 포함으로 사용할 수 없습니다.")
+            return False
+        return True
 
     def get_numbered_folders(self):
         numbered_folders = {}
@@ -96,13 +108,25 @@ class FolderManager:
         return numbered_folders
 
     def create_folder(self, target_num, suffix):
-        new_name = f"{target_num:02d}_{suffix}"
-        if any(res in new_name.upper() for res in WINDOWS_RESERVED):
-            print(f"❌ 오류: '{new_name}'은 예약어 포함으로 생성 불가.")
+        # 1. 번호 범위 제한
+        if not (1 <= target_num <= 99):
+            print(f"❌ 오류: 폴더 번호는 01~99 사이여야 합니다. (입력: {target_num})")
             return
 
+        # 2. 이름 유효성 검사
+        if not self.is_valid_suffix(suffix):
+            return
+
+        new_name = f"{target_num:02d}_{suffix}"
         numbered_folders = self.get_numbered_folders()
+
+        # 3. 밀어내기 시 99번 초과 여부 확인
         if target_num in numbered_folders:
+            max_num = max(numbered_folders.keys())
+            if max_num + 1 > 99:
+                print("❌ 오류: 밀어내기 수행 시 폴더 번호가 99를 초가하게 됩니다. 정리가 필요합니다.")
+                return
+
             self.log(f"밀어내기 수행: {target_num}번 이상 폴더들의 번호를 +1 합니다.")
             for num in sorted(numbered_folders.keys(), reverse=True):
                 if num >= target_num:
@@ -135,11 +159,18 @@ class FolderManager:
             return
 
         for index, old_num in enumerate(sorted(numbered_folders.keys()), start=1):
+            if index > 99:
+                self.log(f"경고: {numbered_folders[old_num]}은(는) 99번을 초과하여 정리 대상에서 제외됩니다.", emoji="⚠️")
+                continue
             if old_num != index:
                 self.rename_folder(numbered_folders[old_num], index)
         print("\n✅ 모든 정리 공정 완료.")
 
     def rename_folder(self, old_name, new_num):
+        if not (1 <= new_num <= 99):
+            self.log(f"범위 초과(01-99)로 인해 {old_name}의 번호 변경을 중단합니다.", emoji="❌")
+            return
+
         match = self.folder_pattern.match(old_name)
         if match:
             suffix = match.group(2)
@@ -152,7 +183,7 @@ def main():
 
     parser = argparse.ArgumentParser(description="Michelle's Professional Folder Manager")
     parser.add_argument("mode", help="작업 모드 (make, rm, fill 등)")
-    parser.add_argument("number", type=int, nargs='?', help="대상 폴더 번호")
+    parser.add_argument("number", type=int, nargs='?', help="대상 폴더 번호 (1-99)")
     parser.add_argument("name", nargs='?', default="새폴더", help="폴더 이름 (생성 시)")
     parser.add_argument("--dry-run", action="store_true", help="실제 변경 없이 시뮬레이션 수행")
 
