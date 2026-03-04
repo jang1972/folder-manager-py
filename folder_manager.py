@@ -19,12 +19,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import os
+import sys
 import re
-import json
 import shutil
 import argparse
+import json
 from datetime import datetime
-from pathlib import Path
 
 # --- 1. 상수 및 설정 ---
 ASCII_ART = r"""
@@ -53,25 +54,22 @@ ASCII_ART = r"""
 ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
 """
 
-# --- 1. 전역 설정 및 키워드 (오류 해결 지점) ---
 ARCHIVE_FOLDER_NAME = "Archive"
 MAX_FOLDER_NUMBER = 99
-HISTORY_FILE = Path(".fm_history.json")
-WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "LPT1", "LPT2"}
+HISTORY_FILE = ".fm_history.json"
+WINDOWS_RESERVED = ["CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "LPT1", "LPT2"]
 FORBIDDEN_CHARS = re.compile(r'[\\/:*?"<>|]')
 
-# 명령어 별칭 정의
-CREATE_KW = ['mk', 'new', 'create', 'n']
-REMOVE_KW = ['rm', 'del', 'archive', 'a']
-FILL_KW   = ['fill', 'f', 'reorder']
-ROLLBACK_KW = ['rb', 'undo', 'rollback']
+CREATE_KW = ['생성', '만들기', 'mk', 'make', 'mkdir']
+DELETE_KW = ['삭제', '지우기', 'del', 'rm', 'rmdir', 'archive']
+FILL_KW = ['fill', 'fillup', '채우기', '정리']
+ROLLBACK_KW = ['rollback', 'undo', '되돌리기']
 
 class FolderManager:
     def __init__(self, dry_run=False):
         self.dry_run = dry_run
         self.folder_pattern = re.compile(r'^(\d+)\_(.*)$')
         self.history = []
-        self.cwd = Path.cwd()
 
     def log(self, message, emoji="➡️"):
         prefix = "🔍 [DRY-RUN]" if self.dry_run else emoji
@@ -88,177 +86,149 @@ class FolderManager:
 
     def is_valid_suffix(self, suffix):
         if FORBIDDEN_CHARS.search(suffix):
-            print("❌ 오류: 금지 문자(\\ / : * ? \" < > |)가 포함되어 있습니다.")
+            print(f"❌ 오류: 금지 문자(\\ / : * ? \" < > |)가 포함되어 있습니다.")
             return False
-        if suffix.upper() in WINDOWS_RESERVED:
+        if any(res == suffix.upper() or suffix.upper().startswith(res + ".") for res in WINDOWS_RESERVED):
             print(f"❌ 오류: '{suffix}'은(는) 시스템 예약어입니다.")
             return False
         return True
 
     def save_history(self, mode):
         if self.dry_run or not self.history: return
-        data = {
-            "mode": mode,
-            "changes": self.history,
-            "timestamp": datetime.now().isoformat()
-        }
-        # pathlib의 write_text로 간결하게 저장
-        HISTORY_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        data = {"mode": mode, "changes": self.history, "timestamp": str(datetime.now())}
+        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
 
     def add_history(self, old, new):
-        self.history.append({
-            "old": str(old) if old else None,
-            "new": str(new) if new else None
-        })
+        self.history.append({"old": old, "new": new})
 
     def get_numbered_folders(self):
-        """현재 디렉토리의 번호가 매겨진 폴더들을 Path 객체 딕셔너리로 반환"""
         folders = {}
-        for path in self.cwd.iterdir():
-            if path.is_dir() and path.name != ARCHIVE_FOLDER_NAME:
-                match = self.folder_pattern.match(path.name)
-                if match:
-                    folders[int(match.group(1))] = path
+        for entry in os.scandir('.'):
+            if entry.is_dir() and entry.name != ARCHIVE_FOLDER_NAME:
+                match = self.folder_pattern.match(entry.name)
+                if match: folders[int(match.group(1))] = entry.name
         return folders
 
-    def rename_folder(self, old_path, new_num):
+    def rename_folder(self, old_name, new_num):
         if not (1 <= new_num <= MAX_FOLDER_NUMBER): return
-        match = self.folder_pattern.match(old_path.name)
+        match = self.folder_pattern.match(old_name)
         if match:
             new_name = f"{new_num:02d}_{match.group(2)}"
-            new_path = old_path.with_name(new_name) # 같은 부모 내에서 이름만 교체
-            if old_path == new_path: return
+            if old_name == new_name: return
+            self.log(f"이름 변경: {old_name} -> {new_name}", emoji="📝")
+            if self.safe_execute(os.rename, old_name, new_name):
+                self.add_history(old_name, new_name)
 
-            self.log(f"이름 변경: {old_path.name} -> {new_name}", emoji="📝")
-            if self.safe_execute(old_path.rename, new_path):
-                self.add_history(old_path, new_path)
+    def handle_archive_collision(self, archive_path, target_name):
+        """레거시 스타일: 아카이브 내 충돌 시 기존 폴더를 old_로 변경"""
+        dest_path = os.path.join(archive_path, target_name)
+        if os.path.exists(dest_path):
+            old_name = f"old_{target_name}"
+            old_path = os.path.join(archive_path, old_name)
+            if os.path.exists(old_path):
+                # 2차 충돌 시 타임스탬프 처리
+                ts_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{old_name}"
+                self.log(f"아카이브 내 중복 해결: {old_name} -> {ts_name}", emoji="♻️")
+                self.safe_execute(shutil.move, old_path, os.path.join(archive_path, ts_name))
+
+            self.log(f"아카이브 내 중복 해결: {target_name} -> {old_name}", emoji="♻️")
+            self.safe_execute(shutil.move, dest_path, old_path)
+        return True
 
     def create_folder(self, target_num, suffix):
-        if target_num is None:
-            print("❌ 오류: 번호가 필요합니다. (예: fm mk 1 '폴더명')")
-            return
         if not (1 <= target_num <= MAX_FOLDER_NUMBER) or not self.is_valid_suffix(suffix): return
-
+        new_name = f"{target_num:02d}_{suffix}"
         folders = self.get_numbered_folders()
+
         if target_num in folders:
-            # 밀어내기 로직
-            if max(folders.keys(), default=0) + 1 > MAX_FOLDER_NUMBER:
-                print("❌ 오류: 99번을 초과하여 폴더를 밀어낼 수 없습니다.")
+            if max(folders.keys()) + 1 > MAX_FOLDER_NUMBER:
+                print("❌ 오류: 99번을 초과하게 되어 밀어내기가 불가능합니다.")
                 return
             for num in sorted(folders.keys(), reverse=True):
-                if num >= target_num:
-                    self.rename_folder(folders[num], num + 1)
+                if num >= target_num: self.rename_folder(folders[num], num + 1)
 
-        new_path = self.cwd / f"{target_num:02d}_{suffix}"
-        self.log(f"폴더 생성: {new_path.name}")
-        if self.safe_execute(new_path.mkdir, parents=True):
-            self.add_history(None, new_path)
+        self.log(f"폴더 생성: {new_name}")
+        if self.safe_execute(os.makedirs, new_name):
+            self.add_history(None, new_name)
             self.save_history("create")
 
     def archive_folder(self, target_num):
-        if target_num is None: return
         folders = self.get_numbered_folders()
-        if target_num not in folders:
-            print(f"⚠️ {target_num}번 폴더를 찾을 수 없습니다.")
-            return
+        if target_num not in folders: return
 
-        target_path = folders[target_num]
-        archive_dir = self.cwd / ARCHIVE_FOLDER_NAME
+        target_name = folders[target_num]
+        archive_path = os.path.join(os.getcwd(), ARCHIVE_FOLDER_NAME)
 
         if not self.dry_run:
-            archive_dir.mkdir(exist_ok=True)
-            dest_path = archive_dir / target_path.name
+            os.makedirs(archive_path, exist_ok=True)
+            self.handle_archive_collision(archive_path, target_name)
 
-            # --- 아카이브 내 중복 처리 로직 및 로그 출력 ---
-            if dest_path.exists():
-                backup = archive_dir / f"old_{target_path.name}"
-
-                # 이미 old_... 폴더가 있다면 타임스탬프를 붙여서 밀어냄
-                if backup.exists():
-                    ts = datetime.now().strftime('%H%M%S')
-                    timestamped_path = archive_dir / f"{ts}_{backup.name}"
-                    self.log(f"기존 백업 이동: {backup.name} -> {timestamped_path.name}", emoji="♻️")
-                    backup.rename(timestamped_path)
-
-                # 현재 아카이브에 있는 폴더를 old_...로 변경
-                self.log(f"기존 폴더 백업: {dest_path.name} -> {backup.name}", emoji="♻️")
-                dest_path.rename(backup)
-
-        dest_path = archive_dir / target_path.name
-        self.log(f"아카이브 이동: {target_path.name} -> {ARCHIVE_FOLDER_NAME}/", emoji="📦")
-
-        if self.safe_execute(shutil.move, str(target_path), str(dest_path)):
-            self.add_history(target_path, dest_path)
-            # 빈자리 당기기
+        self.log(f"아카이브 이동: {target_name} -> {ARCHIVE_FOLDER_NAME}/")
+        if self.safe_execute(shutil.move, target_name, os.path.join(archive_path, target_name)):
+            self.add_history(target_name, os.path.join(ARCHIVE_FOLDER_NAME, target_name))
             for num in sorted(folders.keys()):
-                if num > target_num:
-                    self.rename_folder(folders[num], num - 1)
+                if num > target_num: self.rename_folder(folders[num], num - 1)
             self.save_history("archive")
 
     def fill_gaps(self):
         folders = self.get_numbered_folders()
-        if not folders: return
         for i, old_num in enumerate(sorted(folders.keys()), 1):
             self.rename_folder(folders[old_num], i)
         self.save_history("fill")
         print("✅ 빈자리 채우기 완료.")
 
     def rollback(self):
-        if not HISTORY_FILE.exists():
+        if not os.path.exists(HISTORY_FILE):
             print("❌ 오류: 되돌릴 작업 이력이 없습니다.")
             return
 
-        data = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
-        changes = data["changes"]
+        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
 
-        # 유효성 검사 (Path 객체 활용)
+        changes = data["changes"]
+        self.log(f"롤백 시작: {data['mode']} 작업을 되돌립니다.")
+
+        # 유효성 검사 (사용자 임의 파일 투입 감지)
         for item in changes:
-            curr = Path(item["new"]) if item["new"] else None
-            if curr and curr.exists():
-                if item["old"] is None and any(curr.iterdir()):
-                    print(f"❌ 롤백 불가: '{curr.name}' 폴더가 비어있지 않습니다.")
+            curr = item["new"]
+            if curr and os.path.exists(curr):
+                if item["old"] is None and os.listdir(curr): # mk 작업 취소 시 폴더가 안 비어있으면
+                    print(f"❌ 롤백 불가: '{curr}' 폴더 내부에 사용자가 추가한 파일이 있습니다. 수동 조치하세요.")
                     return
-            elif curr and not curr.exists():
-                print(f"❌ 롤백 불가: 대상 '{curr.name}'가 사라졌습니다.")
+            elif curr and not os.path.exists(curr):
+                print(f"❌ 롤백 불가: 대상 폴더 '{curr}'가 사라졌습니다.")
                 return
 
         for item in reversed(changes):
-            old_p = Path(item["old"]) if item["old"] else None
-            new_p = Path(item["new"]) if item["new"] else None
+            old, new = item["old"], item["new"]
+            if old is None: # mk 취소
+                self.log(f"삭제(취소): {new}")
+                self.safe_execute(os.rmdir, new)
+            else: # rename/archive 취소
+                self.log(f"복구: {new} -> {old}")
+                self.safe_execute(shutil.move, new, old)
 
-            if old_p is None: # mk 취소 -> 삭제
-                self.log(f"삭제(취소): {new_p.name}")
-                self.safe_execute(new_p.rmdir)
-            else: # rename/archive 취소 -> 복구
-                self.log(f"복구: {new_p.name} -> {old_p.name}")
-                self.safe_execute(shutil.move, str(new_p), str(old_p))
-
-        if not self.dry_run: HISTORY_FILE.unlink()
+        os.remove(HISTORY_FILE)
         print("✅ 롤백 완료.")
 
 def main():
     print(ASCII_ART)
-
-    parser = argparse.ArgumentParser(description="Pathlib 기반 폴더 관리자")
-    parser.add_argument("mode", help="명령어 (mk, rm, fill, rb)")
-    parser.add_argument("number", type=int, nargs='?', help="폴더 번호")
-    parser.add_argument("name", nargs='?', default="새폴더", help="폴더 접미사")
-    parser.add_argument("--dry-run", action="store_true", help="가상 실행")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("mode", help="mk, rm, fill, rollback")
+    parser.add_argument("number", type=int, nargs='?', help="번호")
+    parser.add_argument("name", nargs='?', default="새폴더", help="이름")
+    parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     fm = FolderManager(dry_run=args.dry_run)
     mode = args.mode.lower()
 
-    if mode in CREATE_KW:
-        fm.create_folder(args.number, args.name)
-    elif mode in REMOVE_KW:
-        fm.archive_folder(args.number)
-    elif mode in FILL_KW:
-        fm.fill_gaps()
-    elif mode in ROLLBACK_KW:
-        fm.rollback()
-    else:
-        print(f"❓ 알 수 없는 명령입니다: {mode}")
+    if mode in CREATE_KW: fm.create_folder(args.number, args.name)
+    elif mode in DELETE_KW: fm.archive_folder(args.number)
+    elif mode in FILL_KW: fm.fill_gaps()
+    elif mode in ROLLBACK_KW: fm.rollback()
+    else: print(f"❌ 알 수 없는 모드: {mode}")
 
 if __name__ == "__main__":
     main()
