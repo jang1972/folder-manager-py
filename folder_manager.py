@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # 리눅서일시 sudo ln -s "$(pwd)/folder_manager.py" /usr/local/bin/fm'을 권장합니다.
-# Dry-run 기능 추가 버전
 # Made by Michelle
 # With Gemini
 # Edit Tool is VSC, Kate
