@@ -155,20 +155,28 @@ class FolderManager:
 
     def archive_folder(self, target_num):
         folders = self.get_numbered_folders()
-        if target_num not in folders: return
+        
+        # 1. 대상 폴더가 없는 경우에 대한 경고 문구 추가
+        if target_num not in folders:
+            print(f"⚠️ 경고: {target_num:02d}번 폴더를 찾을 수 없습니다. (작업 취소)")
+            return
 
         target_name = folders[target_num]
         archive_path = os.path.join(os.getcwd(), ARCHIVE_FOLDER_NAME)
 
         if not self.dry_run:
-            os.makedirs(archive_path, exist_ok=True)
+            if not os.path.exists(archive_path):
+                os.makedirs(archive_path)
             self.handle_archive_collision(archive_path, target_name)
 
+        dest_path = os.path.join(archive_path, target_name)
         self.log(f"아카이브 이동: {target_name} -> {ARCHIVE_FOLDER_NAME}/")
-        if self.safe_execute(shutil.move, target_name, os.path.join(archive_path, target_name)):
-            self.add_history(target_name, os.path.join(ARCHIVE_FOLDER_NAME, target_name))
+        
+        if self.safe_execute(shutil.move, target_name, dest_path):
+            self.add_history(target_name, dest_path)
             for num in sorted(folders.keys()):
-                if num > target_num: self.rename_folder(folders[num], num - 1)
+                if num > target_num:
+                    self.rename_folder(folders[num], num - 1)
             self.save_history("archive")
 
     def fill_gaps(self):
