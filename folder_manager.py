@@ -156,38 +156,50 @@ class FolderManager:
             self.add_history(None, new_path)
             self.save_history("create")
 
-    def archive_folder(self, target_num):
+  def archive_folder(self, target_num):
         if target_num is None: return
         folders = self.get_numbered_folders()
+        
+        # 1. 대상 폴더 존재 확인 (안전장치)
         if target_num not in folders:
-            print(f"⚠️ {target_num}번 폴더를 찾을 수 없습니다.")
+            print(f"⚠️ 경고: {target_num:02d}번 폴더를 찾을 수 없습니다. (작업 취소)")
             return
 
         target_path = folders[target_num]
         archive_dir = self.cwd / ARCHIVE_FOLDER_NAME
-
-        if not self.dry_run:
-            archive_dir.mkdir(exist_ok=True)
-            dest_path = archive_dir / target_path.name
-
-            # --- 아카이브 내 중복 처리 로직 및 로그 출력 ---
-            if dest_path.exists():
-                backup = archive_dir / f"old_{target_path.name}"
-
-                # 이미 old_... 폴더가 있다면 타임스탬프를 붙여서 밀어냄
-                if backup.exists():
-                    ts = datetime.now().strftime('%H%M%S')
-                    timestamped_path = archive_dir / f"{ts}_{backup.name}"
-                    self.log(f"기존 백업 이동: {backup.name} -> {timestamped_path.name}", emoji="♻️")
-                    backup.rename(timestamped_path)
-
-                # 현재 아카이브에 있는 폴더를 old_...로 변경
-                self.log(f"기존 폴더 백업: {dest_path.name} -> {backup.name}", emoji="♻️")
-                dest_path.rename(backup)
-
         dest_path = archive_dir / target_path.name
-        self.log(f"아카이브 이동: {target_path.name} -> {ARCHIVE_FOLDER_NAME}/", emoji="📦")
 
+        # 2. 아카이브 내 충돌 해결 (Dry-run이 아닐 때만 실제 수행)
+        if not self.dry_run:
+            archive_dir.mkdir(exist_ok=True) # 아카이브 폴더 자동 생성
+            
+            if dest_path.exists():
+                backup_path = archive_dir / f"old_{target_path.name}"
+                
+                # 2차 충돌 (old_... 도 이미 있을 때) -> 타임스탬프 처리
+                if backup_path.exists():
+                    ts = datetime.now().strftime('%Y%m%d%H%M%S')
+                    timestamped_path = archive_dir / f"{ts}_{backup_path.name}"
+                    self.log(f"아카이브 내 중복 해결: {backup_path.name} -> {timestamped_path.name}", emoji="♻️")
+                    backup_path.rename(timestamped_path)
+
+                # 기존 파일을 old_로 밀어내기
+                self.log(f"아카이브 내 중복 해결: {dest_path.name} -> {backup_path.name}", emoji="♻️")
+                dest_path.rename(backup_path)
+
+        # 3. 실제 이동 수행
+        self.log(f"아카이브 이동: {target_path.name} -> {ARCHIVE_FOLDER_NAME}/", emoji="📦")
+        
+        # shutil.move는 Path 객체를 직접 인자로 받을 수 있습니다 (Python 3.6+)
+        if self.safe_execute(shutil.move, target_path, dest_path):
+            self.add_history(target_path, dest_path)
+            
+            # 4. 번호 당기기 로직 (오름차순 정렬 후 처리)
+            for num in sorted(folders.keys()):
+                if num > target_num:
+                    self.rename_folder(folders[num], num - 1)
+            
+            self.save_history("archive")
         if self.safe_execute(shutil.move, str(target_path), str(dest_path)):
             self.add_history(target_path, dest_path)
             # 빈자리 당기기
