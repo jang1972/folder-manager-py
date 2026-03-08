@@ -121,7 +121,7 @@ class FolderManager:
                 self.add_history(old_name, new_name)
 
     def handle_archive_collision(self, archive_path, target_name):
-        """레거시 스타일: 아카이브 내 충돌 시 기존 폴더를 old_로 변경"""
+        """아카이브 내 충돌 시 기존 폴더를 old_로 변경"""
         dest_path = os.path.join(archive_path, target_name)
         if os.path.exists(dest_path):
             old_name = f"old_{target_name}"
