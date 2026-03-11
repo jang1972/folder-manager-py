@@ -158,15 +158,12 @@ func (fm *FolderManager) ArchiveFolder(targetNum int) {
 
 	if !fm.DryRun {
 		os.MkdirAll(ARCHIVE_DIR, 0755)
-
 		dest := filepath.Join(ARCHIVE_DIR, targetName)
 
-		// 1. 충돌 여부 확인: os.Stat의 결과를 err에 저장
-		_, err := os.Stat(dest)
-		if err == nil {
+		// [충돌 방지] 아카이브 내 동일 이름 존재 시 처리
+		if _, err := os.Stat(dest); err == nil {
 			oldName := "old_" + targetName
 			oldPath := filepath.Join(ARCHIVE_DIR, oldName)
-
 			if _, err = os.Stat(oldPath); err == nil {
 				ts := time.Now().Format("20060102150405")
 				oldPath = filepath.Join(ARCHIVE_DIR, ts+"_"+oldName)
@@ -177,26 +174,27 @@ func (fm *FolderManager) ArchiveFolder(targetNum int) {
 			os.Rename(dest, oldPath)
 		}
 
+		// 1. 대상 폴더를 아카이브로 이동
 		os.Rename(targetName, dest)
-
 		fm.Log("아카이브 이동: "+targetName, "♻️")
-		fm.History = append(fm.History, HistoryItem{Old: targetName, New: filepath.Join(ARCHIVE_DIR, targetName)})
+		fm.History = append(fm.History, HistoryItem{Old: targetName, New: dest})
 
+		// 2. [덮어쓰기 방지] 나머지 폴더들 번호 당기기
+		// targetNum보다 큰 번호들을 오름차순(1, 2, 3...)으로 정렬하여 앞에서부터 하나씩 당깁니다.
 		keys := []int{}
-		for k := range folders { if k > targetNum { keys = append(keys, k) } }
-		sort.Ints(keys)
-		for _, num := range keys { fm.RenameFolder(folders[num], num-1) }
+		for k := range folders {
+			if k > targetNum {
+				keys = append(keys, k)
+			}
+		}
+		sort.Ints(keys) // 오름차순 정렬: 03->02, 04->03 순서로 안전하게 변경
+
+		for _, num := range keys {
+			fm.RenameFolder(folders[num], num-1)
+		}
+
 		fm.SaveHistory("archive")
 	}
-
-	fm.Log("아카이브 이동: "+targetName, "♻️")
-	fm.History = append(fm.History, HistoryItem{Old: targetName, New: filepath.Join(ARCHIVE_DIR, targetName)})
-
-	keys := []int{}
-	for k := range folders { if k > targetNum { keys = append(keys, k) } }
-	sort.Ints(keys)
-	for _, num := range keys { fm.RenameFolder(folders[num], num-1) }
-	fm.SaveHistory("archive")
 }
 
 func (fm *FolderManager) FillGaps() {
