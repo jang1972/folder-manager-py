@@ -1,4 +1,4 @@
-# Folder Manager (fm)
+# 📁 Folder Manager (fm)
 
 번호 기반의 폴더 관리 및 자동 정렬 도구입니다.
 
@@ -20,10 +20,17 @@ This code was generated and optimized with the assistance of Google Gemini 3.0-F
 
 ---
 
-## 왜 만들었는가 ( Why was it created ? )
+## ❓ 왜 만들었는가 ( Why was it created ?)
 유튜브 쇼츠에서 ['구글 직원의 폴더 관리법'](https://www.youtube.com/watch?v=fRYw09PzHvM) 이런 것만 던져주고 자동화 기법은 안 알려줘서 한번 만들어 보았습니다.
 
 I saw that YouTube shorts only showed things like 'How Google Employees Manage Folders' but didn't teach any automation techniques, so I tried making one.
+
+---
+
+## 🔗 파생 버전
+[Golang-version](https://github.com/jang1972/folder-manager-py/tree/golang-version)
+
+[pathlib-version](https://github.com/jang1972/folder-manager-py/tree/pathlib-version)
 
 ---
 
