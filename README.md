@@ -28,9 +28,13 @@ I saw that YouTube shorts only showed things like 'How Google Employees Manage F
 ---
 
 ## 🔗 파생 버전
-[Golang-version](https://github.com/jang1972/folder-manager-py/tree/golang-version)
+- [Golang-version](https://github.com/jang1972/folder-manager-py/tree/golang-version)
 
-[pathlib-version](https://github.com/jang1972/folder-manager-py/tree/pathlib-version)
+인터프리터 설치도 싫거나 어려운 사람들이 사용하면 됩니다. (It is suitable for people who dislike or find it difficult to install interpreter.)
+
+- [pathlib-version](https://github.com/jang1972/folder-manager-py/tree/pathlib-version)
+
+사실상 유지보수 되지 않는 버전이니 사용을 비권장 드립니다. (This version is effectively not maintained. We do not recommend using it.)
 
 ---
 
@@ -53,6 +57,10 @@ The fundamental copyright for the characters and designs belongs to **miHoYo Net
 
 - **Fill**: 중간에 누락된 번호가 있다면 01번부터 순차적으로 다시 정렬하여 구조를 최적화합니다. (Re-align all folder numbers sequentially starting from 01 to optimize the structure.)
 
+- **Rollback**: 이전 작업들을 되돌립니다. Rollback 작업 자체와 Dry-run을 제외한 해당 스크립트의 모든 기능이 이에 해당 됩니다. (Reverts previous operations. This applies to all functions of the script except for the Rollback operation itself and Dry-run.)
+
+- **Clear**: 남아 있는 json 로그들을 전부 초기화시킵니다. Rollback이 불가능합니다. (All remaining JSON logs are initialized. Rollback is not possible.)
+
 - **Dry-run**: --dry-run 플래그를 통해 실제 파일 시스템을 변경하기 전, 수행될 작업을 콘솔에서 미리 안전하게 확인할 수 있습니다. (Safely preview all planned operations in the console using the --dry-run flag before any actual file system changes occur.)
 
 - **Smart Parsing**: argparse를 도입하여 더 전문적인 CLI 인터페이스를 제공하며, 01_Name 형식의 명명 규칙을 지원합니다. (Features a professional CLI interface via argparse and supports the 01.Name naming convention.)
@@ -60,6 +68,8 @@ The fundamental copyright for the characters and designs belongs to **miHoYo Net
 ---
 
 ## 🔧 설치 및 사용법 (Installation & Usage)
+
+파일명 변경 : 자주 사용하실거라면 심볼릭 링크를 걸지 않을 경우 'fm'으로 파일명을 교체하는 것을 권장 드립니다.
 
 ### Recommended for Linux:
 ```bash
