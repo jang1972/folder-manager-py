@@ -139,16 +139,22 @@ func (fm *FolderManager) GetNumberedFolders() map[int]string {
 }
 
 func (fm *FolderManager) SaveHistory(mode string) {
-	if fm.DryRun || len(fm.History) == 0 {
-		return
+	if fm.DryRun || len(fm.History) == 0 { return }
+
+	var stack []HistoryData
+	if data, err := os.ReadFile(HISTORY_FILE); err == nil {
+		json.Unmarshal(data, &stack)
 	}
-	data := HistoryData{
+
+	newAction := HistoryData{
 		Mode:      mode,
 		Changes:   fm.History,
 		Timestamp: time.Now().Format(TIME_FORMAT),
 	}
-	file, _ := json.MarshalIndent(data, "", "  ")
-	_ = os.WriteFile(HISTORY_FILE, file, 0644)
+	stack = append(stack, newAction) // Stack에 추가
+
+	file, _ := json.MarshalIndent(stack, "", "  ")
+	os.WriteFile(HISTORY_FILE, file, 0644)
 }
 
 func (fm *FolderManager) CreateFolder(targetNum int, suffix string) {
@@ -247,43 +253,69 @@ func (fm *FolderManager) Rollback() {
 		return
 	}
 
-	var history HistoryData
-	if err := json.Unmarshal(data, &history); err != nil {
-		fmt.Println("❌ 오류: 로그 파일 형식이 유효하지 않습니다.") // 추가된 기능 2
+	var stack []HistoryData
+	if err := json.Unmarshal(data, &stack); err != nil {
+		fmt.Println("❌ 오류: 로그 파일 형식이 유효하지 않습니다.")
 		return
 	}
 
-	// 필드 유효성 검증
-	if history.Mode == "" || len(history.Changes) == 0 {
-		fmt.Println("❌ 오류: 정상적인 로그 기록 파일이 아닙니다.")
+	if len(stack) == 0 {
+		fmt.Println("❌ 오류: 기록이 비어있습니다.")
+		os.Remove(HISTORY_FILE)
 		return
 	}
 
-	fm.Log(fmt.Sprintf("롤백 시작: %s (%s)", history.Mode, history.Timestamp), "🔄")
+	// 마지막 작업(Top) 꺼내기
+	lastIdx := len(stack) - 1
+	task := stack[lastIdx]
+	
+	fm.Log(fmt.Sprintf("롤백 시작: %s (%s)", task.Mode, task.Timestamp), "🔄")
 
-	// 안전성 선검사
-	for _, item := range history.Changes {
+	// 1. 사전 검증
+	for _, item := range task.Changes {
 		if item.New != "" {
-			if _, err := os.Stat(item.New); os.IsNotExist(err) {
+			info, err := os.Stat(item.New)
+			if os.IsNotExist(err) {
 				fmt.Printf("❌ 롤백 불가: 대상 '%s'가 존재하지 않습니다.\n", item.New)
 				return
+			}
+			// 생성 취소 시 폴더 내부 검사
+			if item.Old == "" && info.IsDir() {
+				entries, _ := os.ReadDir(item.New)
+				if len(entries) > 0 {
+					fmt.Printf("❌ 롤백 불가: '%s' 내부에 파일이 존재합니다.\n", item.New)
+					return
+				}
 			}
 		}
 	}
 
-	for i := len(history.Changes) - 1; i >= 0; i-- {
-		item := history.Changes[i]
+	// 2. 실제 실행 (역순)
+	for i := len(task.Changes) - 1; i >= 0; i-- {
+		item := task.Changes[i]
 		if !fm.DryRun {
 			if item.Old == "" {
+				fm.Log("삭제(취소): "+item.New, "🗑️")
 				os.Remove(item.New)
 			} else {
+				fm.Log(fmt.Sprintf("복구: %s -> %s", item.New, item.Old), "↩️")
 				os.Rename(item.New, item.Old)
 			}
 		}
 	}
 
-	if !fm.DryRun { os.Remove(HISTORY_FILE) }
-	fmt.Println("✅ 롤백 완료.")
+	// 3. 남은 스택 업데이트
+	if !fm.DryRun {
+		stack = stack[:lastIdx] // 마지막 요소 제거
+		if len(stack) > 0 {
+			newData, _ := json.MarshalIndent(stack, "", "  ")
+			os.WriteFile(HISTORY_FILE, newData, 0644)
+		} else {
+			os.Remove(HISTORY_FILE)
+		}
+	}
+
+	fmt.Printf("✅ [%s] 작업 롤백 완료. (남은 기록: %d개)\n", task.Mode, len(stack))
 }
 
 // --- 4. 메인 실행부 및 도움말 ---
@@ -305,7 +337,8 @@ func main() {
 		fmt.Println("  mk, make      : 폴더 생성 및 밀어내기 (예: fm mk 1 프로젝트)")
 		fmt.Println("  rm, archive   : 폴더 아카이브 및 당기기 (예: fm rm 5)")
 		fmt.Println("  fill, gaps    : 빈 번호 채우기 정리 (예: fm fill)")
-		fmt.Println("  rollback, undo: 마지막 작업 되돌리기 (예: fm rollback)")
+		fmt.Println("  rollback, undo, 되돌리기     : 마지막 작업 되돌리기 (예: fm rollback)")
+		fmt.Println("  clear, reset, 비우기     : 기록을 삭제하기 (예: fm clear)")
 		fmt.Println("  license     : 라이선스 정보 출력")
 		fmt.Println("\nOptions:")
 		flag.PrintDefaults()
@@ -357,6 +390,9 @@ func main() {
 
 		case "rollback", "undo", "되돌리기":
 			fm.Rollback()
+		
+		case "clear", "reset", "비우기":
+			fm.ClearHistory()
 
 		default:
 			fmt.Printf("❌ 알 수 없는 모드: %s. 'fm --help'를 확인하세요.\n", mode)
@@ -378,4 +414,21 @@ func (fm *FolderManager) FillGaps() {
 	}
 	fm.SaveHistory("fill")
 	fmt.Println("✅ 빈자리 채우기 완료.")
+}
+
+func (fm *FolderManager) ClearHistory() {
+	if _, err := os.Stat(HISTORY_FILE); err == nil {
+		if fm.DryRun {
+			fm.Log("기록 삭제 시뮬레이션", "🔍")
+		} else {
+			err := os.Remove(HISTORY_FILE)
+			if err != nil {
+				fmt.Println("❌ 오류: 기록 삭제 실패")
+				return
+			}
+			fmt.Println("✅ 모든 작업 이력이 삭제되었습니다. (롤백 불가)")
+		}
+	} else {
+		fmt.Println("💡 삭제할 이력이 없습니다.")
+	}
 }
