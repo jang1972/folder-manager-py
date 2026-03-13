@@ -73,4 +73,5 @@ The fundamental copyright for the characters and designs belongs to **miHoYo Net
 
 ### Recommended for Linux:
 ```bash
-sudo ln -s "$(pwd)/folder_manager.py" /usr/local/bin/fm
+mkdir -p ~/.local/bin
+ln -s "$(pwd)/folder_manager.py" ~/.local/bin/fm
