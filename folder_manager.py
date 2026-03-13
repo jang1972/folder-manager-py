@@ -70,6 +70,20 @@ class FolderManager:
         self.dry_run = dry_run
         self.folder_pattern = re.compile(r'^(\d+)\_(.*)$')
         self.history = []
+        self._check_path_safety()
+
+    def _check_path_safety(self):
+        """민감한 시스템 경로에서의 실행 방지"""
+        curr_path = os.path.abspath(os.getcwd())
+        # 루트 디렉토리 방지
+        if curr_path == os.path.abspath(os.sep):
+            sys.exit("❌ 위험: 루트 디렉토리에서 작업을 수행할 수 없습니다.")
+
+        # 시스템 핵심 경로 키워드 차단
+        sensitive_dirs = ['C:\\Windows', 'C:\\Program Files', '/etc', '/usr', '/bin', '/sbin']
+        for sd in sensitive_dirs:
+            if curr_path.startswith(sd):
+                sys.exit(f"❌ 위험: 시스템 경로({sd}) 내에서 작업을 수행할 수 없습니다.")
 
     def log(self, message, emoji="➡️"):
         prefix = "🔍 [DRY-RUN]" if self.dry_run else emoji
@@ -95,7 +109,11 @@ class FolderManager:
 
     def save_history(self, mode):
         if self.dry_run or not self.history: return
-        data = {"mode": mode, "changes": self.history, "timestamp": str(datetime.now())}
+        data = {
+            "mode": mode,
+            "changes": self.history,
+            "timestamp": datetime.now().strftime('%Y%m%d%H%M%S')
+        }
         with open(HISTORY_FILE, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
 
@@ -121,17 +139,14 @@ class FolderManager:
                 self.add_history(old_name, new_name)
 
     def handle_archive_collision(self, archive_path, target_name):
-        """아카이브 내 충돌 시 기존 폴더를 old_로 변경"""
         dest_path = os.path.join(archive_path, target_name)
         if os.path.exists(dest_path):
             old_name = f"old_{target_name}"
             old_path = os.path.join(archive_path, old_name)
             if os.path.exists(old_path):
-                # 2차 충돌 시 타임스탬프 처리
                 ts_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{old_name}"
                 self.log(f"아카이브 내 중복 해결: {old_name} -> {ts_name}", emoji="♻️")
                 self.safe_execute(shutil.move, old_path, os.path.join(archive_path, ts_name))
-
             self.log(f"아카이브 내 중복 해결: {target_name} -> {old_name}", emoji="♻️")
             self.safe_execute(shutil.move, dest_path, old_path)
         return True
@@ -155,32 +170,31 @@ class FolderManager:
 
     def archive_folder(self, target_num):
         folders = self.get_numbered_folders()
-        
-        # 1. 대상 폴더가 없는 경우에 대한 경고 문구 추가
         if target_num not in folders:
-            print(f"⚠️ 경고: {target_num:02d}번 폴더를 찾을 수 없습니다. (작업 취소)")
+            print(f"⚠️ 경고: {target_num:02d}번 폴더를 찾을 수 없습니다.")
             return
 
         target_name = folders[target_num]
         archive_path = os.path.join(os.getcwd(), ARCHIVE_FOLDER_NAME)
 
         if not self.dry_run:
-            if not os.path.exists(archive_path):
-                os.makedirs(archive_path)
+            if not os.path.exists(archive_path): os.makedirs(archive_path)
             self.handle_archive_collision(archive_path, target_name)
 
         dest_path = os.path.join(archive_path, target_name)
         self.log(f"아카이브 이동: {target_name} -> {ARCHIVE_FOLDER_NAME}/")
-        
+
         if self.safe_execute(shutil.move, target_name, dest_path):
             self.add_history(target_name, dest_path)
             for num in sorted(folders.keys()):
-                if num > target_num:
-                    self.rename_folder(folders[num], num - 1)
+                if num > target_num: self.rename_folder(folders[num], num - 1)
             self.save_history("archive")
 
     def fill_gaps(self):
         folders = self.get_numbered_folders()
+        if not folders:
+            print("❌ 정리할 폴더가 없습니다.")
+            return
         for i, old_num in enumerate(sorted(folders.keys()), 1):
             self.rename_folder(folders[old_num], i)
         self.save_history("fill")
@@ -191,52 +205,78 @@ class FolderManager:
             print("❌ 오류: 되돌릴 작업 이력이 없습니다.")
             return
 
-        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        try:
+            with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            # JSON 유효성 검사 (정상 로그인지 확인)
+            if not all(k in data for k in ("mode", "changes")):
+                raise ValueError("필수 데이터 누락")
+        except (json.JSONDecodeError, ValueError):
+            print("❌ 오류: 로그 파일이 손상되었거나 유효하지 않습니다.")
+            return
 
         changes = data["changes"]
-        self.log(f"롤백 시작: {data['mode']} 작업을 되돌립니다.")
+        self.log(f"롤백 시작: {data['mode']} ({data.get('timestamp', 'unknown')})")
 
-        # 유효성 검사 (사용자 임의 파일 투입 감지)
+        # 사전 검증
         for item in changes:
             curr = item["new"]
             if curr and os.path.exists(curr):
-                if item["old"] is None and os.listdir(curr): # mk 작업 취소 시 폴더가 안 비어있으면
-                    print(f"❌ 롤백 불가: '{curr}' 폴더 내부에 사용자가 추가한 파일이 있습니다. 수동 조치하세요.")
+                if item["old"] is None and os.listdir(curr):
+                    print(f"❌ 롤백 불가: '{curr}' 내부에 파일이 존재합니다.")
                     return
             elif curr and not os.path.exists(curr):
-                print(f"❌ 롤백 불가: 대상 폴더 '{curr}'가 사라졌습니다.")
+                print(f"❌ 롤백 불가: 대상 폴더 '{curr}'가 존재하지 않습니다.")
                 return
 
         for item in reversed(changes):
             old, new = item["old"], item["new"]
-            if old is None: # mk 취소
-                self.log(f"삭제(취소): {new}")
-                self.safe_execute(os.rmdir, new)
-            else: # rename/archive 취소
-                self.log(f"복구: {new} -> {old}")
-                self.safe_execute(shutil.move, new, old)
+            if old is None: self.safe_execute(os.rmdir, new)
+            else: self.safe_execute(shutil.move, new, old)
 
         os.remove(HISTORY_FILE)
         print("✅ 롤백 완료.")
 
+# --- 3. 실행 인터페이스 ---
 def main():
     print(ASCII_ART)
-    parser = argparse.ArgumentParser()
-    parser.add_argument("mode", help="mk, rm, fill, rollback")
-    parser.add_argument("number", type=int, nargs='?', help="번호")
-    parser.add_argument("name", nargs='?', default="새폴더", help="이름")
-    parser.add_argument("--dry-run", action="store_true")
-    args = parser.parse_args()
+    parser = argparse.ArgumentParser(
+        description="Michelle's Professional Folder Manager (FM)",
+        epilog="예시: fm mk 1 프로젝트 | fm rm 5 | fm fill | fm rollback",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument("mode", help="작업 모드: mk (생성), rm (삭제/아카이브), fill (정렬), rollback (되돌리기)")
+    parser.add_argument("number", type=int, nargs='?', help="대상 폴더 번호 (1-99)")
+    parser.add_argument("name", nargs='?', default="새폴더", help="폴더 이름 (생성 시 사용)")
+    parser.add_argument("--dry-run", action="store_true", help="실제 변경 없이 시뮬레이션만 수행")
 
+    if len(sys.argv) == 1:
+        parser.print_help()
+        return
+
+    args = parser.parse_args()
     fm = FolderManager(dry_run=args.dry_run)
     mode = args.mode.lower()
 
-    if mode in CREATE_KW: fm.create_folder(args.number, args.name)
-    elif mode in DELETE_KW: fm.archive_folder(args.number)
-    elif mode in FILL_KW: fm.fill_gaps()
-    elif mode in ROLLBACK_KW: fm.rollback()
-    else: print(f"❌ 알 수 없는 모드: {mode}")
+    if args.dry_run:
+        print("⚠️ [DRY-RUN] 시뮬레이션 모드입니다. 파일 시스템에 영향을 주지 않습니다.\n")
+
+    try:
+        if mode in CREATE_KW:
+            if args.number is None: raise ValueError("번호가 필요합니다.")
+            fm.create_folder(args.number, args.name)
+        elif mode in DELETE_KW:
+            if args.number is None: raise ValueError("번호가 필요합니다.")
+            fm.archive_folder(args.number)
+        elif mode in FILL_KW:
+            fm.fill_gaps()
+        elif mode in ROLLBACK_KW:
+            fm.rollback()
+        else:
+            print(f"❌ 알 수 없는 모드: {mode}")
+    except ValueError as e:
+        print(f"❌ 입력 오류: {e}")
 
 if __name__ == "__main__":
     main()
