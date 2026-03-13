@@ -240,10 +240,15 @@ class FolderManager:
 
 # --- 3. 실행 인터페이스 ---
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--license":
+        print("\nThis program is free software under GNU GPL v3.")
+        print("See <https://www.gnu.org/licenses/> for details.")
+        return
+    
     print(ASCII_ART)
     parser = argparse.ArgumentParser(
         description="Michelle's Professional Folder Manager (FM)",
-        epilog="예시: fm mk 1 프로젝트 | fm rm 5 | fm fill | fm rollback",
+        epilog="예시: fm mk 1 프로젝트 | fm rm 5 | fm fill | fm rollback | fm --license",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("mode", help="작업 모드: mk (생성), rm (삭제/아카이브), fill (정렬), rollback (되돌리기)")
