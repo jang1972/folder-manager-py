@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# 리눅서일시 sudo ln -s "$(pwd)/folder_manager.py" /usr/local/bin/fm'을 권장합니다.
+# 리눅서일시 sudo ln -s "$(pwd)/folder_manager.py" /usr/local/bin/fm 또는 mkdir -p ~/.local/bin 후 ln -s "$(pwd)/folder_manager.py" ~/.local/bin/fm을 권장합니다.
 # Made by Michelle
 # With Gemini
 # Edit Tool is VSC, Kate
