@@ -64,7 +64,9 @@ CREATE_KW = ['생성', '만들기', 'mk', 'make', 'mkdir']
 DELETE_KW = ['삭제', '지우기', 'del', 'rm', 'rmdir', 'archive']
 FILL_KW = ['fill', 'fillup', '채우기', '정리']
 ROLLBACK_KW = ['rollback', 'undo', '되돌리기']
+CLEAR_KW = ['clear', 'reset', '비우기']
 
+# --- 2. 로직 클래스 ---
 class FolderManager:
     def __init__(self, dry_run=False):
         self.dry_run = dry_run
@@ -109,13 +111,26 @@ class FolderManager:
 
     def save_history(self, mode):
         if self.dry_run or not self.history: return
+    
+    # 기존 기록 읽기 시도
+        stack = []
+        if os.path.exists(HISTORY_FILE):
+            try:
+                with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+                    stack = json.load(f)
+                    if not isinstance(stack, list): stack = [] # 유효성 검사
+            except: stack = []
+
+        # 새 작업 추가 (Stack의 Top)
         data = {
-            "mode": mode,
-            "changes": self.history,
-            "timestamp": datetime.now().strftime('%Y%m%d%H%M%S')
-        }
+            "mode": mode, 
+            "changes": self.history, 
+        " timestamp": datetime.now().strftime('%Y%m%d%H%M%S')
+    }
+        stack.append(data)
+
         with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+            json.dump(stack, f, ensure_ascii=False, indent=2)
 
     def add_history(self, old, new):
         self.history.append({"old": old, "new": new})
@@ -207,36 +222,63 @@ class FolderManager:
 
         try:
             with open(HISTORY_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-
-            # JSON 유효성 검사 (정상 로그인지 확인)
-            if not all(k in data for k in ("mode", "changes")):
-                raise ValueError("필수 데이터 누락")
+                stack = json.load(f)
+            
+            if not stack or not isinstance(stack, list):
+                print("❌ 오류: 기록이 비어있거나 유효하지 않습니다.")
+                return
         except (json.JSONDecodeError, ValueError):
-            print("❌ 오류: 로그 파일이 손상되었거나 유효하지 않습니다.")
+            print("❌ 오류: 로그 파일이 손상되었습니다.")
             return
 
-        changes = data["changes"]
-        self.log(f"롤백 시작: {data['mode']} ({data.get('timestamp', 'unknown')})")
+        # 마지막 작업(Top) 꺼내기
+        last_action = stack.pop()
+        mode = last_action.get("mode", "알 수 없음")
+        timestamp = last_action.get("timestamp", "N/A")
+        changes = last_action.get("changes", [])
 
-        # 사전 검증
+        self.log(f"롤백 시작: {mode} ({timestamp})", emoji="🔄")
+
+        # 1. 사전 검증 (모든 변경 대상이 존재하는지 확인)
         for item in changes:
             curr = item["new"]
             if curr and os.path.exists(curr):
-                if item["old"] is None and os.listdir(curr):
+                # mk 작업 취소 시 폴더가 비어있는지 확인
+                if item["old"] is None and os.path.isdir(curr) and os.listdir(curr):
                     print(f"❌ 롤백 불가: '{curr}' 내부에 파일이 존재합니다.")
                     return
             elif curr and not os.path.exists(curr):
-                print(f"❌ 롤백 불가: 대상 폴더 '{curr}'가 존재하지 않습니다.")
+                print(f"❌ 롤백 불가: 대상 '{curr}'를 찾을 수 없습니다.")
                 return
 
+        # 2. 실제 실행 (역순으로 수행)
         for item in reversed(changes):
             old, new = item["old"], item["new"]
-            if old is None: self.safe_execute(os.rmdir, new)
-            else: self.safe_execute(shutil.move, new, old)
+            if old is None: # 생성 취소
+                self.log(f"삭제(취소): {new}", emoji="🗑️")
+                self.safe_execute(os.rmdir, new)
+            else: # 이름 변경/아카이브 취소
+                self.log(f"복구: {new} -> {old}", emoji="↩️")
+                self.safe_execute(shutil.move, new, old)
 
-        os.remove(HISTORY_FILE)
-        print("✅ 롤백 완료.")
+        # 3. 남은 스택 업데이트
+        if stack:
+            with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+                json.dump(stack, f, ensure_ascii=False, indent=2)
+        else:
+            os.remove(HISTORY_FILE)
+            
+        print(f"✅ [{mode}] 작업 롤백 완료. (남은 기록: {len(stack)}개)")
+
+    def clear_history(self):
+        if os.path.exists(HISTORY_FILE):
+            if self.dry_run:
+                self.log("기록 삭제 시뮬레이션", emoji="🔍")
+            else:
+                os.remove(HISTORY_FILE)
+                print("✅ 모든 작업 이력이 삭제되었습니다. (롤백 불가)")
+        else:
+            print("💡 삭제할 이력이 없습니다.")
 
 # --- 3. 실행 인터페이스 ---
 def main():
@@ -244,14 +286,14 @@ def main():
         print("\nThis program is free software under GNU GPL v3.")
         print("See <https://www.gnu.org/licenses/> for details.")
         return
-    
+
     print(ASCII_ART)
     parser = argparse.ArgumentParser(
         description="Michelle's Professional Folder Manager (FM)",
-        epilog="예시: fm mk 1 프로젝트 | fm rm 5 | fm fill | fm rollback | fm --license",
+        epilog="예시: fm mk 1 프로젝트 | fm rm 5 | fm fill | fm rollback | fm clear |  fm --license",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("mode", help="작업 모드: mk (생성), rm (삭제/아카이브), fill (정렬), rollback (되돌리기)")
+    parser.add_argument("mode", help="작업 모드: mk (생성), rm (삭제), fill (정렬), rollback (되돌리기), clear (기록 삭제)")
     parser.add_argument("number", type=int, nargs='?', help="대상 폴더 번호 (1-99)")
     parser.add_argument("name", nargs='?', default="새폴더", help="폴더 이름 (생성 시 사용)")
     parser.add_argument("--dry-run", action="store_true", help="실제 변경 없이 시뮬레이션만 수행")
@@ -278,6 +320,8 @@ def main():
             fm.fill_gaps()
         elif mode in ROLLBACK_KW:
             fm.rollback()
+        elif mode in CLEAR_KW:
+            fm.clear_history()
         else:
             print(f"❌ 알 수 없는 모드: {mode}")
     except ValueError as e:
