@@ -288,6 +288,14 @@ func (fm *FolderManager) Rollback() {
 
 // --- 4. 메인 실행부 및 도움말 ---
 func main() {
+	for _, arg := range os.Args {
+		if arg == "--license" {
+			fmt.Println("\nThis program is free software under GNU GPL v3.")
+			fmt.Println("See <https://www.gnu.org/licenses/> for details.")
+			return
+		}
+	}
+
 	flag.Usage = func() {
 		fmt.Println(ASCII_ART)
 		fmt.Println("Michelle's Professional Folder Manager (FM-Go)")
@@ -298,6 +306,7 @@ func main() {
 		fmt.Println("  rm, archive   : 폴더 아카이브 및 당기기 (예: fm rm 5)")
 		fmt.Println("  fill, gaps    : 빈 번호 채우기 정리 (예: fm fill)")
 		fmt.Println("  rollback, undo: 마지막 작업 되돌리기 (예: fm rollback)")
+		fmt.Println("  license     : 라이선스 정보 출력")
 		fmt.Println("\nOptions:")
 		flag.PrintDefaults()
 	}
@@ -311,12 +320,22 @@ func main() {
 		return
 	}
 
+	if len(args) < 1 {
+		flag.Usage()
+		return
+	}
+
 	fm := &FolderManager{DryRun: *dryRun}
 	fm.CheckPathSafety() // 경로 안전 검사 실행
 
 	mode := strings.ToLower(args[0])
 
 	switch mode {
+		case "--license":
+			fmt.Println("This program is free software under GNU GPL v3.")
+			fmt.Println("See <https://www.gnu.org/licenses/> for details.")
+			return
+
 		case "mk", "make", "mkdir", "생성":
 			if len(args) < 2 {
 				fmt.Println("❌ 오류: 번호를 입력하세요."); return
