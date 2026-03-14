@@ -71,6 +71,8 @@ var (
 		sensitivePaths = []string{"/etc", "/usr", "/bin", "/sbin", "C:\\Windows", "C:\\Program Files"}
 )
 
+var windowsReserved = []string{"CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "LPT1", "LPT2"}
+
 // --- 2. 데이터 구조 ---
 type HistoryItem struct {
 	Old string `json:"old"`
@@ -111,6 +113,15 @@ func (fm *FolderManager) CheckPathSafety() {
 			os.Exit(1)
 		}
 	}
+}
+
+func (fm *FolderManager) SafePathCheck(path string) bool {
+	if path == "" { return true }
+	currPath, _ := os.Getwd()
+	absBase, _ := filepath.Abs(currPath)
+	absTarget, _ := filepath.Abs(path)
+	// 현재 디렉토리의 하위 경로인지 확인
+	return strings.HasPrefix(absTarget, absBase)
 }
 
 func (fm *FolderManager) Log(msg, emoji string) {
@@ -154,7 +165,7 @@ func (fm *FolderManager) SaveHistory(mode string) {
 	stack = append(stack, newAction) // Stack에 추가
 
 	file, _ := json.MarshalIndent(stack, "", "  ")
-	os.WriteFile(HISTORY_FILE, file, 0644)
+	os.WriteFile(HISTORY_FILE, file, 0600)
 }
 
 func (fm *FolderManager) CreateFolder(targetNum int, suffix string) {
@@ -166,6 +177,14 @@ func (fm *FolderManager) CreateFolder(targetNum int, suffix string) {
 		fmt.Println("❌ 오류: 폴더 이름에 금지 문자가 포함되어 있습니다.")
 		return
 	}
+
+	upperSuffix := strings.ToUpper(suffix)
+    for _, res := range windowsReserved {
+        if upperSuffix == res || strings.HasPrefix(upperSuffix, res+".") {
+            fmt.Printf("❌ 오류: '%s'은(는) 시스템 예약어입니다.\n", suffix)
+            return
+        }
+    }
 
 	folders := fm.GetNumberedFolders()
 	if _, exists := folders[targetNum]; exists {
@@ -188,6 +207,11 @@ func (fm *FolderManager) CreateFolder(targetNum int, suffix string) {
 	newName := fmt.Sprintf("%02d_%s", targetNum, suffix)
 	fm.Log("폴더 생성: "+newName, "📁")
 	if !fm.DryRun {
+		// 기존에 동일한 이름의 파일/폴더가 있는지 먼저 확인
+		if _, err := os.Stat(newName); err == nil {
+			fmt.Printf("❌ 오류: '%s'이(가) 이미 존재합니다.\n", newName)
+			return
+		}
 		os.Mkdir(newName, 0755)
 		fm.History = append(fm.History, HistoryItem{Old: "", New: newName})
 		fm.SaveHistory("create")
@@ -217,7 +241,9 @@ func (fm *FolderManager) ArchiveFolder(targetNum int) {
 
 	if !fm.DryRun {
 		os.MkdirAll(ARCHIVE_DIR, 0755)
-		dest := filepath.Join(ARCHIVE_DIR, targetName)
+		// 인젝션 방어: targetName에서 순수 이름만 추출
+		safeName := filepath.Base(targetName)
+		dest := filepath.Join(ARCHIVE_DIR, safeName)
 
 		if _, err := os.Stat(dest); err == nil {
 			oldName := "old_" + targetName
@@ -271,8 +297,14 @@ func (fm *FolderManager) Rollback() {
 	
 	fm.Log(fmt.Sprintf("롤백 시작: %s (%s)", task.Mode, task.Timestamp), "🔄")
 
-	// 1. 사전 검증
+// 1. 사전 검증
 	for _, item := range task.Changes {
+		// 경로 인젝션 검증 (추가)
+		if !fm.SafePathCheck(item.New) || !fm.SafePathCheck(item.Old) {
+			fmt.Println("❌ 보안 경고: 허용되지 않은 경로가 로그에서 감지되었습니다.")
+			return
+		}
+
 		if item.New != "" {
 			info, err := os.Stat(item.New)
 			if os.IsNotExist(err) {
@@ -309,7 +341,7 @@ func (fm *FolderManager) Rollback() {
 		stack = stack[:lastIdx] // 마지막 요소 제거
 		if len(stack) > 0 {
 			newData, _ := json.MarshalIndent(stack, "", "  ")
-			os.WriteFile(HISTORY_FILE, newData, 0644)
+			os.WriteFile(HISTORY_FILE, newData, 0600)
 		} else {
 			os.Remove(HISTORY_FILE)
 		}
@@ -332,13 +364,13 @@ func main() {
 		fmt.Println(ASCII_ART)
 		fmt.Println("Michelle's Professional Folder Manager (FM-Go)")
 		fmt.Println("\nUsage:")
-		fmt.Println("  fm <mode> [number] [name] [--dry-run]")
+		fmt.Println("  fm [--dry-run] <mode> [number] [name]")
 		fmt.Println("\nModes:")
 		fmt.Println("  mk, make, mkdir, 만들기, 생성    : 폴더 생성 및 밀어내기 (예: fm mk 1 프로젝트)")
 		fmt.Println("  rm, rmdir, archive, 지우기, 삭제    : 폴더 아카이브 및 당기기 (예: fm rm 5)")
 		fmt.Println("  fill, gaps, 채우기    : 빈 번호 채우기 정리 (예: fm fill)")
 		fmt.Println("  rollback, undo, 되돌리기     : 마지막 작업 되돌리기 (예: fm rollback)")
-		fmt.Println("  clear, reset, 비우기     : 기록을 삭제하기 (예: fm clear)")
+		fmt.Println("  clear, reset, 비우기, 초기화     : 기록을 삭제하기 (예: fm clear)")
 		fmt.Println("  license     : 라이선스 정보 출력")
 		fmt.Println("\nOptions:")
 		flag.PrintDefaults()
@@ -347,11 +379,6 @@ func main() {
 	dryRun := flag.Bool("dry-run", false, "실제 변경 없이 시뮬레이션 수행")
 	flag.Parse()
 	args := flag.Args()
-
-	if len(args) < 1 {
-		flag.Usage()
-		return
-	}
 
 	if len(args) < 1 {
 		flag.Usage()
@@ -373,7 +400,10 @@ func main() {
 			if len(args) < 2 {
 				fmt.Println("❌ 오류: 번호를 입력하세요."); return
 			}
-			num, _ := strconv.Atoi(args[1])
+			num, err := strconv.Atoi(args[1]) // err로 받기
+			if err != nil {
+    			fmt.Println("❌ 오류: 번호는 숫자로 입력해야 합니다."); return
+			}
 			name := "새폴더"
 			if len(args) >= 3 { name = args[2] }
 			fm.CreateFolder(num, name)
@@ -386,12 +416,12 @@ func main() {
 			fm.ArchiveFolder(num)
 
 		case "fill", "gaps", "채우기":
-			fm.FillGaps() // 기존 로직 호출
+			fm.FillGaps() 
 
 		case "rollback", "undo", "되돌리기":
 			fm.Rollback()
 		
-		case "clear", "reset", "비우기":
+		case "clear", "reset", "비우기", "초기화":
 			fm.ClearHistory()
 
 		default:
