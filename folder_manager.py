@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # 리눅서일시 sudo ln -s "$(pwd)/folder_manager.py" /usr/local/bin/fm 또는 mkdir -p ~/.local/bin 후 ln -s "$(pwd)/folder_manager.py" ~/.local/bin/fm을 권장합니다.
-# Made by Michelle
-# With Gemini
+# Dry-run, 01-99 제한, 롤백 및 경로 안전 검사 추가 버전
+# Made by Michelle | With Gemini | 2026
 # Edit Tool is VSC, Kate
 # 번호 기반 폴더 관리 및 자동 정렬 도구 (Folder Manager)
 # A number-based folder management and auto-alignment tool.
@@ -60,11 +60,12 @@ HISTORY_FILE = ".fm_history.json"
 WINDOWS_RESERVED = ["CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "LPT1", "LPT2"]
 FORBIDDEN_CHARS = re.compile(r'[\\/:*?"<>|]')
 
+# 키워드 그룹화
 CREATE_KW = ['생성', '만들기', 'mk', 'make', 'mkdir']
 DELETE_KW = ['삭제', '지우기', 'del', 'rm', 'rmdir', 'archive']
 FILL_KW = ['fill', 'fillup', '채우기', '정리']
 ROLLBACK_KW = ['rollback', 'undo', '되돌리기']
-CLEAR_KW = ['clear', 'reset', '비우기']
+CLEAR_KW = ['clear', 'reset', '비우기', '초기화']
 
 # --- 2. 로직 클래스 ---
 class FolderManager:
@@ -87,6 +88,14 @@ class FolderManager:
             if curr_path.startswith(sd):
                 sys.exit(f"❌ 위험: 시스템 경로({sd}) 내에서 작업을 수행할 수 없습니다.")
 
+    def safe_path_check(self, path):
+        """경로가 현재 디렉토리 또는 아카이브 폴더 내에 있는지 검증 (인젝션 방어)"""
+        if path is None: return True
+        abs_base = os.path.abspath(os.getcwd())
+        abs_target = os.path.abspath(path)
+        # 대상 경로가 현재 작업 디렉토리의 하위 경로로 시작하는지 확인
+        return abs_target.startswith(abs_base)
+
     def log(self, message, emoji="➡️"):
         prefix = "🔍 [DRY-RUN]" if self.dry_run else emoji
         print(f"{prefix} {message}")
@@ -101,6 +110,9 @@ class FolderManager:
             return False
 
     def is_valid_suffix(self, suffix):
+        if os.path.sep in suffix or (os.path.altsep and os.path.altsep in suffix):
+            print("❌ 오류: 이름에 경로 구분자가 포함될 수 없습니다.")
+            return False
         if FORBIDDEN_CHARS.search(suffix):
             print(f"❌ 오류: 금지 문자(\\ / : * ? \" < > |)가 포함되어 있습니다.")
             return False
@@ -111,26 +123,33 @@ class FolderManager:
 
     def save_history(self, mode):
         if self.dry_run or not self.history: return
-    
-    # 기존 기록 읽기 시도
         stack = []
         if os.path.exists(HISTORY_FILE):
             try:
                 with open(HISTORY_FILE, "r", encoding="utf-8") as f:
                     stack = json.load(f)
-                    if not isinstance(stack, list): stack = [] # 유효성 검사
-            except: stack = []
+                    if not isinstance(stack, list): stack = []
+            except Exception:
+                stack = []
 
-        # 새 작업 추가 (Stack의 Top)
+        # 새 작업 추가 및 JSON 구조 완성
         data = {
-            "mode": mode, 
-            "changes": self.history, 
-        " timestamp": datetime.now().strftime('%Y%m%d%H%M%S')
-    }
+            "mode": mode,
+            "changes": self.history,
+            "timestamp": datetime.now().strftime('%Y%m%d%H%M%S')
+        }
         stack.append(data)
 
+        # 안전한 직렬화: utf-8 명시 및 인젝션 방지를 위한 인자 설정
         with open(HISTORY_FILE, "w", encoding="utf-8") as f:
             json.dump(stack, f, ensure_ascii=False, indent=2)
+
+        # 권한 제한 (600)
+        if os.name == 'posix':
+            try:
+                os.chmod(HISTORY_FILE, 0o600)
+            except Exception:
+                pass
 
     def add_history(self, old, new):
         self.history.append({"old": old, "new": new})
@@ -154,15 +173,16 @@ class FolderManager:
                 self.add_history(old_name, new_name)
 
     def handle_archive_collision(self, archive_path, target_name):
-        dest_path = os.path.join(archive_path, target_name)
+        safe_name = os.path.basename(target_name)
+        dest_path = os.path.join(archive_path, safe_name)
         if os.path.exists(dest_path):
-            old_name = f"old_{target_name}"
+            old_name = f"old_{safe_name}"
             old_path = os.path.join(archive_path, old_name)
             if os.path.exists(old_path):
-                ts_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{old_name}"
-                self.log(f"아카이브 내 중복 해결: {old_name} -> {ts_name}", emoji="♻️")
+                ts_name = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{safe_name}"
+                self.log(f"아카이브 내 중복 해결: {safe_name} -> {ts_name}", emoji="♻️")
                 self.safe_execute(shutil.move, old_path, os.path.join(archive_path, ts_name))
-            self.log(f"아카이브 내 중복 해결: {target_name} -> {old_name}", emoji="♻️")
+            self.log(f"아카이브 내 중복 해결: {target_name} -> {safe_name}", emoji="♻️")
             self.safe_execute(shutil.move, dest_path, old_path)
         return True
 
@@ -179,9 +199,11 @@ class FolderManager:
                 if num >= target_num: self.rename_folder(folders[num], num + 1)
 
         self.log(f"폴더 생성: {new_name}")
-        if self.safe_execute(os.makedirs, new_name):
+        if self.safe_execute(os.makedirs, new_name, exist_ok=False):
             self.add_history(None, new_name)
             self.save_history("create")
+        else:
+            print(f"❌ 오류: '{new_name}' 폴더를 생성하지 못했습니다.")
 
     def archive_folder(self, target_num):
         folders = self.get_numbered_folders()
@@ -241,10 +263,21 @@ class FolderManager:
 
         # 1. 사전 검증 (모든 변경 대상이 존재하는지 확인)
         for item in changes:
-            curr = item["new"]
+            # 1-1. 구조 검증
+            if not all(k in item for k in ("old", "new")):
+                print("❌ 오류: 유효하지 않은 히스토리 항목입니다.")
+                return
+
+            curr, old = item["new"], item["old"] # 변수 정의
+
+            # 1-2. 경로 인젝션 검증 (핵심 보안)
+            if not self.safe_path_check(curr) or not self.safe_path_check(old):
+                print(f"❌ 보안 경고: 허용되지 않은 경로가 로그에서 감지되었습니다.")
+                return
+
+            # 1-3. 상태 검증
             if curr and os.path.exists(curr):
-                # mk 작업 취소 시 폴더가 비어있는지 확인
-                if item["old"] is None and os.path.isdir(curr) and os.listdir(curr):
+                if old is None and os.path.isdir(curr) and os.listdir(curr):
                     print(f"❌ 롤백 불가: '{curr}' 내부에 파일이 존재합니다.")
                     return
             elif curr and not os.path.exists(curr):
