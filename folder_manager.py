@@ -19,6 +19,9 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# [Notice] By contributing to this project, you agree to transfer 
+# copyright or grant relicensing rights to the author. 
+# The project will remain 'Free of Charge' and 'Open Source'.
 
 import re
 import json
