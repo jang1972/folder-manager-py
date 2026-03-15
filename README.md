@@ -85,6 +85,7 @@ ln -s "$(pwd)/folder_manager.py" ~/.local/bin/fm
 이 소프트웨어는 자동화를 통한 효율성 향상을 위해 개발되었습니다.
 특정 플랫폼에 대한 체계적인 차별이나 지속 가능한 소프트웨어 건전성을 의도적으로 무시하는 행위 등 '기술적 악'을 추구하는 데 이 소프트웨어를 사용하는 것은 절대 권장하지 않습니다.
 저희는 사용자 경험과 기술적 무결성이 모두에게 존중받는 디지털 환경을 지향합니다.
+
 사용자를 존중하고, 기술을 존중하십시오.
 
 기술에 영광따위가 아닌 무궁무진한 가능성을.
@@ -95,6 +96,12 @@ the systematic discrimination against specific platforms or the intentional
 disregard for sustainable software health—is explicitly not recommended.
 We advocate for a digital environment where the user experience
 and technical integrity are respected by all.
+
 Respect the user' respect the craft.
 
 Not glory for technology, but boundless possibilities.
+
+## 기여 안내 (Contributing)
+이 프로젝트 레포지토리에 속하는 모든 브랜치에 기여(Issue 제기나 Pull Request 제출 등)하는 것은 프로젝트의 **[권리 양도 및 라이선스 변경 동의(CLA)](CLA.md)** 에 동의하는 것으로 간주됩니다.
+
+By contributing to any branch within this project repository (including but not limited to Issues or Pull Requests), you are deemed to have agreed to the project's **[Contributor License Agreement (CLA)](CLA.md)**.
