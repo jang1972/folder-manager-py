@@ -101,6 +101,8 @@ Respect the user' respect the craft.
 
 Not glory for technology, but boundless possibilities.
 
+---
+
 ## 기여 안내 (Contributing)
 이 프로젝트 레포지토리에 속하는 모든 브랜치에 기여(Issue 제기나 Pull Request 제출 등)하는 것은 프로젝트의 **[권리 양도 및 라이선스 변경 동의(CLA)](CLA.md)** 에 동의하는 것으로 간주됩니다.
 
