@@ -62,13 +62,19 @@ const (
 	MAX_FOLDER_NUM = 99
 	HISTORY_FILE   = ".fm_history.json"
 	TIME_FORMAT    = "20060102150405"
+	ConfigFile     = ".fm_config.json"
+	TagsFile       = ".fm_tags.json"
 )
+
+type Config struct {
+	ArchivePath string `json:"archive_path"`
+}
 
 var (
 	folderPattern  = regexp.MustCompile(`^(\d{2})_(.*)$`)
 	forbiddenChars = regexp.MustCompile(`[\\/:*?"<>|]`)
-		// 시스템 민감 경로 키워드
-		sensitivePaths = []string{"/etc", "/usr", "/bin", "/sbin", "C:\\Windows", "C:\\Program Files"}
+	// 시스템 민감 경로 키워드
+	sensitivePaths = []string{"/etc", "/usr", "/bin", "/sbin", "C:\\Windows", "C:\\Program Files"}
 )
 
 var windowsReserved = []string{"CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "LPT1", "LPT2"}
@@ -115,8 +121,24 @@ func (fm *FolderManager) CheckPathSafety() {
 	}
 }
 
+func loadConfig() Config {
+	var config Config
+	data, err := os.ReadFile(ConfigFile)
+	if err == nil {
+		json.Unmarshal(data, &config)
+	}
+	return config
+}
+
+func saveConfig(config Config) error {
+	data, _ := json.MarshalIndent(config, "", "  ")
+	return os.WriteFile(ConfigFile, data, 0644)
+}
+
 func (fm *FolderManager) SafePathCheck(path string) bool {
-	if path == "" { return true }
+	if path == "" {
+		return true
+	}
 	currPath, _ := os.Getwd()
 	absBase, _ := filepath.Abs(currPath)
 	absTarget, _ := filepath.Abs(path)
@@ -150,7 +172,9 @@ func (fm *FolderManager) GetNumberedFolders() map[int]string {
 }
 
 func (fm *FolderManager) SaveHistory(mode string) {
-	if fm.DryRun || len(fm.History) == 0 { return }
+	if fm.DryRun || len(fm.History) == 0 {
+		return
+	}
 
 	var stack []HistoryData
 	if data, err := os.ReadFile(HISTORY_FILE); err == nil {
@@ -179,25 +203,33 @@ func (fm *FolderManager) CreateFolder(targetNum int, suffix string) {
 	}
 
 	upperSuffix := strings.ToUpper(suffix)
-    for _, res := range windowsReserved {
-        if upperSuffix == res || strings.HasPrefix(upperSuffix, res+".") {
-            fmt.Printf("❌ 오류: '%s'은(는) 시스템 예약어입니다.\n", suffix)
-            return
-        }
-    }
+	for _, res := range windowsReserved {
+		if upperSuffix == res || strings.HasPrefix(upperSuffix, res+".") {
+			fmt.Printf("❌ 오류: '%s'은(는) 시스템 예약어입니다.\n", suffix)
+			return
+		}
+	}
 
 	folders := fm.GetNumberedFolders()
 	if _, exists := folders[targetNum]; exists {
 		// 밀어내기 시 99번 초과 검사
 		maxNum := 0
-		for k := range folders { if k > maxNum { maxNum = k } }
+		for k := range folders {
+			if k > maxNum {
+				maxNum = k
+			}
+		}
 		if maxNum >= MAX_FOLDER_NUM {
 			fmt.Println("❌ 오류: 99번을 초과하게 되어 밀어내기가 불가능합니다.")
 			return
 		}
 
 		keys := []int{}
-		for k := range folders { if k >= targetNum { keys = append(keys, k) } }
+		for k := range folders {
+			if k >= targetNum {
+				keys = append(keys, k)
+			}
+		}
 		sort.Sort(sort.Reverse(sort.IntSlice(keys)))
 		for _, k := range keys {
 			fm.RenameFolder(folders[k], k+1)
@@ -220,9 +252,13 @@ func (fm *FolderManager) CreateFolder(targetNum int, suffix string) {
 
 func (fm *FolderManager) RenameFolder(oldName string, newNum int) {
 	match := folderPattern.FindStringSubmatch(oldName)
-	if match == nil { return }
+	if match == nil {
+		return
+	}
 	newName := fmt.Sprintf("%02d_%s", newNum, match[2])
-	if oldName == newName { return }
+	if oldName == newName {
+		return
+	}
 
 	fm.Log(fmt.Sprintf("이름 변경: %s -> %s", oldName, newName), "📝")
 	if !fm.DryRun {
@@ -263,13 +299,96 @@ func (fm *FolderManager) ArchiveFolder(targetNum int) {
 		fm.History = append(fm.History, HistoryItem{Old: targetName, New: dest})
 
 		keys := []int{}
-		for k := range folders { if k > targetNum { keys = append(keys, k) } }
+		for k := range folders {
+			if k > targetNum {
+				keys = append(keys, k)
+			}
+		}
 		sort.Ints(keys)
 		for _, num := range keys {
 			fm.RenameFolder(folders[num], num-1)
 		}
 		fm.SaveHistory("archive")
 	}
+}
+
+// 아카이브 경로 가져오기
+func (fm *FolderManager) getArchivePath() string {
+	config := loadConfig()
+	if config.ArchivePath != "" {
+		return config.ArchivePath
+	}
+	// 현재 실행 경로(.)의 Archive 폴더를 기본값으로 설정
+	return filepath.Join(".", "Archive")
+}
+
+// 권한 및 경로 체크
+func (fm *FolderManager) checkPathAccess(path string) bool {
+	if path == "" {
+		return false
+	}
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		err := os.MkdirAll(path, 0755)
+		if err != nil {
+			fmt.Println("❌ 해당 디렉토리는 잠겨 있습니다. 권한을 해제하십시오.")
+			return false
+		}
+	}
+	return true
+}
+
+func (fm *FolderManager) AnalyzeFolder(num int) {
+	folders := fm.GetNumberedFolders()
+	name, ok := folders[num]
+	if !ok {
+		fmt.Printf("⚠️ %02d번 폴더를 찾을 수 없습니다.\n", num)
+		return
+	}
+
+	var totalSize int64
+	extCount := make(map[string]int)
+
+	filepath.Walk(name, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			totalSize += info.Size()
+			extCount[filepath.Ext(path)]++
+		}
+		return nil
+	})
+
+	fmt.Printf("📊 [%s] 분석 결과:\n", name)
+	fmt.Printf("  - 전체 용량: %.2f MB\n", float64(totalSize)/(1024*1024))
+	if len(extCount) > 0 {
+		fmt.Println("  - 파일 구성 (확장자별):")
+		for ext, count := range extCount {
+			if ext == "" {
+				ext = "(확장자 없음)"
+			}
+			fmt.Printf("    * %s: %d개\n", ext, count)
+		}
+	}
+}
+
+func (fm *FolderManager) SetTag(num int, tag string) {
+	folders := fm.GetNumberedFolders()
+	name, ok := folders[num]
+	if !ok {
+		return
+	}
+
+	tags := make(map[string]string)
+	data, err := os.ReadFile(TagsFile)
+	if err == nil {
+		json.Unmarshal(data, &tags)
+	}
+
+	tags[name] = tag
+	newData, _ := json.MarshalIndent(tags, "", "  ")
+	os.WriteFile(TagsFile, newData, 0644)
+	fmt.Printf("✅ 태그 등록 완료: %s -> [%s]\n", name, tag)
 }
 
 func (fm *FolderManager) Rollback() {
@@ -294,10 +413,10 @@ func (fm *FolderManager) Rollback() {
 	// 마지막 작업(Top) 꺼내기
 	lastIdx := len(stack) - 1
 	task := stack[lastIdx]
-	
+
 	fm.Log(fmt.Sprintf("롤백 시작: %s (%s)", task.Mode, task.Timestamp), "🔄")
 
-// 1. 사전 검증
+	// 1. 사전 검증
 	for _, item := range task.Changes {
 		// 경로 인젝션 검증 (추가)
 		if !fm.SafePathCheck(item.New) || !fm.SafePathCheck(item.Old) {
@@ -363,6 +482,7 @@ func main() {
 	flag.Usage = func() {
 		fmt.Println(ASCII_ART)
 		fmt.Println("Michelle's Professional Folder Manager (FM-Go)")
+		fmt.Println("Not glory for technology, but boundless possibilities.")
 		fmt.Println("\nUsage:")
 		fmt.Println("  fm [--dry-run] <mode> [number] [name]")
 		fmt.Println("\nModes:")
@@ -371,6 +491,8 @@ func main() {
 		fmt.Println("  fill, gaps, 채우기    : 빈 번호 채우기 정리 (예: fm fill)")
 		fmt.Println("  rollback, undo, 되돌리기     : 마지막 작업 되돌리기 (예: fm rollback)")
 		fmt.Println("  clear, reset, 비우기, 초기화     : 기록을 삭제하기 (예: fm clear)")
+		fmt.Println("  analyze, 분석     : 파일의 용량과 부여 된 태그를 분석 (예: fm analyze 3")
+		fmt.Println("  tag, 태그, 유형     : 폴더에 태그 부여 (예: fm tag 3 실험)")
 		fmt.Println("  license     : 라이선스 정보 출력")
 		fmt.Println("\nOptions:")
 		flag.PrintDefaults()
@@ -391,51 +513,82 @@ func main() {
 	mode := strings.ToLower(args[0])
 
 	switch mode {
-		case "--license":
-			fmt.Println("This program is free software under GNU GPL v3.")
-			fmt.Println("See <https://www.gnu.org/licenses/> for details.")
+	case "mk", "make", "mkdir", "생성", "만들기":
+		if len(args) < 2 {
+			fmt.Println("❌ 오류: 번호를 입력하세요.")
 			return
+		}
+		num, err := strconv.Atoi(args[1])
+		if err != nil {
+			fmt.Println("❌ 오류: 번호는 숫자로 입력해야 합니다.")
+			return
+		}
+		name := "새폴더"
+		if len(args) >= 3 {
+			name = args[2]
+		}
+		fm.CreateFolder(num, name)
 
-		case "mk", "make", "mkdir", "생성", "만들기":
-			if len(args) < 2 {
-				fmt.Println("❌ 오류: 번호를 입력하세요."); return
-			}
-			num, err := strconv.Atoi(args[1]) // err로 받기
-			if err != nil {
-    			fmt.Println("❌ 오류: 번호는 숫자로 입력해야 합니다."); return
-			}
-			name := "새폴더"
-			if len(args) >= 3 { name = args[2] }
-			fm.CreateFolder(num, name)
+	case "rm", "rmdir", "archive", "del", "삭제", "지우기":
+		if len(args) < 2 {
+			fmt.Println("❌ 오류: 번호를 입력하세요.")
+			return
+		}
+		num, _ := strconv.Atoi(args[1])
+		fm.ArchiveFolder(num)
 
-		case "rm", "rmdir", "archive", "del", "삭제", "지우기":
-			if len(args) < 2 {
-				fmt.Println("❌ 오류: 번호를 입력하세요."); return
-			}
-			num, _ := strconv.Atoi(args[1])
-			fm.ArchiveFolder(num)
+	case "fill", "gaps", "채우기", "정렬":
+		fm.FillGaps()
 
-		case "fill", "gaps", "채우기":
-			fm.FillGaps() 
+	case "rollback", "undo", "되돌리기":
+		fm.Rollback()
 
-		case "rollback", "undo", "되돌리기":
-			fm.Rollback()
-		
-		case "clear", "reset", "비우기", "초기화":
-			fm.ClearHistory()
+	case "clear", "reset", "비우기", "초기화":
+		fm.ClearHistory()
 
-		default:
-			fmt.Printf("❌ 알 수 없는 모드: %s. 'fm --help'를 확인하세요.\n", mode)
+	case "set-archive", "경로설정":
+		path := ""
+		if len(args) >= 2 {
+			path = args[1]
+		}
+		if fm.checkPathAccess(path) {
+			config := loadConfig()
+			config.ArchivePath = path
+			saveConfig(config)
+			fmt.Printf("✅ 아카이브 경로가 설정되었습니다: %s\n", path)
+		}
+
+	case "tag", "유형":
+		if len(args) < 3 {
+			fmt.Println("❌ 번호와 태그명이 필요합니다.")
+			return
+		}
+		num, _ := strconv.Atoi(args[1])
+		fm.SetTag(num, args[2])
+
+	case "analyze", "태그", "분석":
+		if len(args) < 2 {
+			fmt.Println("❌ 번호가 필요합니다.")
+			return
+		}
+		num, _ := strconv.Atoi(args[1])
+		fm.AnalyzeFolder(num)
+
+	default:
+		fmt.Printf("❌ 알 수 없는 모드: %s. 'fm --help'를 확인하세요.\n", mode)
 	}
 }
 
 func (fm *FolderManager) FillGaps() {
 	folders := fm.GetNumberedFolders()
 	if len(folders) == 0 {
-		fmt.Println("❌ 정리할 폴더가 없습니다."); return
+		fmt.Println("❌ 정리할 폴더가 없습니다.")
+		return
 	}
 	keys := []int{}
-	for k := range folders { keys = append(keys, k) }
+	for k := range folders {
+		keys = append(keys, k)
+	}
 	sort.Ints(keys)
 	for i, k := range keys {
 		if k != i+1 {
