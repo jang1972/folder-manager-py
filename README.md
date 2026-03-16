@@ -63,14 +63,11 @@ The fundamental copyright for the characters and designs belongs to **miHoYo Net
 
 - **Dry-run**: --dry-run 플래그를 통해 실제 파일 시스템을 변경하기 전, 수행될 작업을 콘솔에서 미리 안전하게 확인할 수 있습니다. (Safely preview all planned operations in the console using the --dry-run flag before any actual file system changes occur.)
 
-- **Analysis**
-폴더의 용량과 폴더 안에 있는 파일의 타입등을 확인 가능. 태그가 있을시 태그도 확인 가능. (Check folder size and file types within the folder. Tags can also be checked if they exist.)
+- **Analysis**: 폴더의 용량과 폴더 안에 있는 파일의 타입등을 확인 가능. 태그가 있을시 태그도 확인 가능. (Check folder size and file types within the folder. Tags can also be checked if they exist.)
 
-- **Tagging**
-특정 폴더에 태그를 붙여서 이후 folder_manager의 분석 기능으로 확인 가능함. (Tag specific folders can be attached to view them later using the folder_manager analysis function.)
+- **Tagging**: 특정 폴더에 태그를 붙여서 이후 folder_manager의 분석 기능으로 확인 가능함. (Tag specific folders can be attached to view them later using the folder_manager analysis function.)
 
-- **Archive Path Setting Function**
-아카이브 저장 위치를 자유롭게 변경 가능. 권한 필요시 경고 후 작동하지 않음. (Freely change the archive save location. If permissions are required, a warning will be issued and the function will not operate.)
+- **Archive Path Setting Function**: 아카이브 저장 위치를 자유롭게 변경 가능. 권한 필요시 경고 후 작동하지 않음. (Freely change the archive save location. If permissions are required, a warning will be issued and the function will not operate.)
 
 - **Smart Parsing**: argparse를 도입하여 더 전문적인 CLI 인터페이스를 제공하며, 01_Name 형식의 명명 규칙을 지원합니다. (Features a professional CLI interface via argparse and supports the 01.Name naming convention.)
 
