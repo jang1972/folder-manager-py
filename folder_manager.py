@@ -3,6 +3,24 @@
 # Dry-run, 01-99 제한, 롤백 및 경로 안전 검사 추가 버전
 # Made by Michelle | With Gemini | 2026
 # Edit Tool is VSC, Kate
+# 번호 기반 폴더 관리 및 자동 정렬 도구 (Folder Manager)
+# A number-based folder management and auto-alignment tool.
+# Copyright (C) 2026 Michelle (jang1972)
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+# [Notice] By contributing to this project, you agree to transfer 
+# copyright or grant relicensing rights to the author. 
+# The project will remain 'Free of Charge' and 'Open Source'.
 
 import os
 import sys
