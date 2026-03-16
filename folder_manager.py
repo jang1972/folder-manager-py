@@ -3,24 +3,6 @@
 # Dry-run, 01-99 제한, 롤백 및 경로 안전 검사 추가 버전
 # Made by Michelle | With Gemini | 2026
 # Edit Tool is VSC, Kate
-# 번호 기반 폴더 관리 및 자동 정렬 도구 (Folder Manager)
-# A number-based folder management and auto-alignment tool.
-# Copyright (C) 2026 Michelle (jang1972)
-#
-# This program is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-# This program is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <https://www.gnu.org/licenses/>.
-# [Notice] By contributing to this project, you agree to transfer 
-# copyright or grant relicensing rights to the author. 
-# The project will remain 'Free of Charge' and 'Open Source'.
 
 import os
 import sys
@@ -60,6 +42,8 @@ ASCII_ART = r"""
 ARCHIVE_FOLDER_NAME = "Archive"
 MAX_FOLDER_NUMBER = 99
 HISTORY_FILE = ".fm_history.json"
+CONFIG_FILE = ".fm_config.json"
+TAGS_FILE = ".fm_tags.json"
 WINDOWS_RESERVED = ["CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "LPT1", "LPT2"]
 FORBIDDEN_CHARS = re.compile(r'[\\/:*?"<>|]')
 
@@ -69,9 +53,42 @@ DELETE_KW = ['삭제', '지우기', 'del', 'rm', 'rmdir', 'archive']
 FILL_KW = ['fill', 'fillup', '채우기', '정리']
 ROLLBACK_KW = ['rollback', 'undo', '되돌리기']
 CLEAR_KW = ['clear', 'reset', '비우기', '초기화']
+SETPATH_KW=['set-archive', '경로설정']
+ANALYZE_KW=['analyze', '분석']
+TAG_KW=['tag', '태그', '유형']
+
+def save_config(config):
+    try:
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"❌ 설정 저장 중 오류 발생: {e}")
+
+def load_config():
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data if isinstance(data, dict) else {}
+        except:
+            return {}
+    return {}
+
+def load_tags():
+    if os.path.exists(TAGS_FILE):
+        try:
+            with open(TAGS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except: return {}
+    return {}
+
+def save_tags(tags):
+    with open(TAGS_FILE, "w", encoding="utf-8") as f:
+        json.dump(tags, f, ensure_ascii=False, indent=2)
 
 # --- 2. 로직 클래스 ---
 class FolderManager:
+
     def __init__(self, dry_run=False):
         self.dry_run = dry_run
         self.folder_pattern = re.compile(r'^(\d+)\_(.*)$')
@@ -111,7 +128,28 @@ class FolderManager:
         except Exception as e:
             print(f"❌ 오류 발생: {e}")
             return False
-
+    
+    def check_path_access(self, path):
+        """디렉토리 접근 및 쓰기 권한 검사"""
+        if not os.path.exists(path):
+            try:
+                if not self.dry_run:
+                    os.makedirs(path, exist_ok=True)
+            except (PermissionError, OSError):
+                print(f"❌ 해당 디렉토리는 잠겨 있습니다. 민감한 디렉토리일 가능성이 높으며, 민감하지 않다면 해당 디렉토리의 권한을 해제하십시오.")
+                return False
+        
+        if not self.dry_run and not os.access(path, os.W_OK):
+            print(f"❌ 해당 디렉토리는 잠겨 있습니다. 민감한 디렉토리일 가능성이 높으며, 민감하지 않다면 해당 디렉토리의 권한을 해제하십시오.")
+            return False
+        return True
+        
+    def get_archive_path(self):
+        """설정된 아카이브 경로 반환"""
+        config = load_config()
+        # 설정이 없으면 기존처럼 현재 경로의 Archive 폴더 반환
+        return config.get("archive_path", os.path.join(os.getcwd(), ARCHIVE_FOLDER_NAME))
+    
     def is_valid_suffix(self, suffix):
         if os.path.sep in suffix or (os.path.altsep and os.path.altsep in suffix):
             print("❌ 오류: 이름에 경로 구분자가 포함될 수 없습니다.")
@@ -215,19 +253,26 @@ class FolderManager:
             return
 
         target_name = folders[target_num]
-        archive_path = os.path.join(os.getcwd(), ARCHIVE_FOLDER_NAME)
+        # 1. 설정된 아카이브 경로 가져오기
+        archive_base = self.get_archive_path()
 
         if not self.dry_run:
-            if not os.path.exists(archive_path): os.makedirs(archive_path)
-            self.handle_archive_collision(archive_path, target_name)
+            # 2. 경로 권한 확인 및 아카이브 내 이름 중복 해결
+            if not self.check_path_access(archive_base):
+                return
+            self.handle_archive_collision(archive_base, target_name)
 
-        dest_path = os.path.join(archive_path, target_name)
-        self.log(f"아카이브 이동: {target_name} -> {ARCHIVE_FOLDER_NAME}/")
+        dest_path = os.path.join(archive_base, target_name)
+        self.log(f"아카이브 이동: {target_name} -> {archive_base}/")
 
+        # 3. 실제 이동 수행 (한 번만 실행)
+        # shutil.move는 서로 다른 디스크 간 이동 시 복사 후 삭제를 자동으로 수행함
         if self.safe_execute(shutil.move, target_name, dest_path):
             self.add_history(target_name, dest_path)
+            # 4. 나머지 폴더들 번호 앞당기기 (정렬 유지)
             for num in sorted(folders.keys()):
-                if num > target_num: self.rename_folder(folders[num], num - 1)
+                if num > target_num:
+                    self.rename_folder(folders[num], num - 1)
             self.save_history("archive")
 
     def fill_gaps(self):
@@ -316,24 +361,71 @@ class FolderManager:
         else:
             print("💡 삭제할 이력이 없습니다.")
 
+    def analyze_folder(self, target_num):
+        """폴더 내부의 파일 구성을 분석하여 태그 추천"""
+        folders = self.get_numbered_folders()
+        if target_num not in folders: return
+        
+        target_name = folders[target_num]
+        ext_count = {}
+        total_size = 0
+        
+        for root, dirs, files in os.walk(target_name):
+            for file in files:
+                ext = os.path.splitext(file)[1].lower()
+                ext_count[ext] = ext_count.get(ext, 0) + 1
+                total_size += os.path.getsize(os.path.join(root, file))
+        
+        # 가장 많이 발견된 확장자 기반 추천
+        if ext_count:
+            main_ext = max(ext_count, key=ext_count.get)
+            size_mb = total_size / (1024 * 1024)
+            print(f"📊 [{target_name}] 분석 결과:")
+            print(f"  - 주요 파일 형식: {main_ext} ({ext_count[main_ext]}개)")
+            print(f"  - 전체 용량: {size_mb:.2f} MB")
+            return main_ext
+        return None
+    def set_tag(self, target_num, tag):
+        """특정 폴더에 커스텀 태그 부여"""
+        folders = self.get_numbered_folders()
+        if target_num not in folders: return
+        
+        tags = load_tags()
+        folder_name = folders[target_num]
+        tags[folder_name] = tag
+        save_tags(tags)
+        print(f"✅ 태그 등록 완료: {folder_name} -> [{tag}]")
+
 # --- 3. 실행 인터페이스 ---
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "--license":
         print("\nThis program is free software under GNU GPL v3.")
         print("See <https://www.gnu.org/licenses/> for details.")
         return
-
+    
     print(ASCII_ART)
     parser = argparse.ArgumentParser(
-        description="Michelle's Professional Folder Manager (FM)",
-        epilog="예시: fm mk 1 프로젝트 | fm rm 5 | fm fill | fm rollback | fm clear |  fm --license",
+        description="Michelle's Professional Folder Manager (FM)\nNot glory for technology, but boundless possibilities.",
+        epilog=(
+            "사용법 예시:\n"
+            "  fm mk / mkdir / 생성 / 만들기 1 프로젝트 : 1번 폴더 생성 및 기존 폴더 밀어내기\n"
+            "  fm rm / rmdir / del / 지우기 / 삭제 5    : 5번 폴더를 아카이브로 이동 및 번호 당기기\n"
+            "  fm fill / fillup / 채우기 / 정렬         : 중간에 빈 번호가 없도록 폴더명 재정렬\n"
+            "  fm set-archive / 경로설정 [경로]         : 아카이브 저장 위치를 외부 디스크 등으로 변경\n"
+            "  fm tag / 태그 / 유형 3 중요업무             : 3번 폴더에 '중요업무' 태그 부여 (DB 저장)\n"
+            "  fm analyze / 분석 2                      : 2번 폴더 내부의 파일 구성 및 용량 분석\n"
+            "  fm rollback / undo / 되돌리기            : 마지막으로 수행한 작업(생성/삭제/이동) 되돌리기\n"
+            "  fm clear / reset / 비우기 / 초기화       : 작업 이력(Rollback 데이터) 초기화"
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("mode", help="작업 모드: mk (생성), rm (삭제), fill (정렬), rollback (되돌리기), clear (기록 삭제)")
-    parser.add_argument("number", type=int, nargs='?', help="대상 폴더 번호 (1-99)")
-    parser.add_argument("name", nargs='?', default="새폴더", help="폴더 이름 (생성 시 사용)")
+    
+    # 인자 정의 수정 (경로 설정을 위해 number의 type=int 제거)
+    parser.add_argument("mode", help="작업 모드: mk, rm, fill, set-archive, tag, analyze, rollback, clear")
+    parser.add_argument("number", nargs='?', help="대상 폴더 번호 (1-99) 또는 설정할 경로")
+    parser.add_argument("name", nargs='?', default="새폴더", help="폴더 이름 또는 부여할 태그명")
     parser.add_argument("--dry-run", action="store_true", help="실제 변경 없이 시뮬레이션만 수행")
-
+    
     if len(sys.argv) == 1:
         parser.print_help()
         return
@@ -346,22 +438,62 @@ def main():
         print("⚠️ [DRY-RUN] 시뮬레이션 모드입니다. 파일 시스템에 영향을 주지 않습니다.\n")
 
     try:
+        # 1. 경로 설정 모드 (SETPATH_KW) 처리
+        if mode in SETPATH_KW:
+            # number 자리에 경로가 올 수도 있고, name 자리에 올 수도 있음
+            new_path_raw = args.number if args.number else args.name
+            new_path = os.path.abspath(new_path_raw if new_path_raw != "새폴더" else ".")
+            
+            if fm.check_path_access(new_path):
+                config = load_config()
+                config["archive_path"] = new_path
+                save_config(config)
+                print(f"✅ 아카이브 경로가 설정되었습니다: {new_path}")
+            return # 설정 완료 후 종료
+
+        # 2. 번호가 필요한 모드들을 위한 숫자 변환 로직
+        target_num = None
+        if args.number is not None:
+            try:
+                target_num = int(args.number)
+            except ValueError:
+                # 생성이나 삭제 모드인데 숫자가 아니면 에러 출력
+                if mode in CREATE_KW or mode in DELETE_KW:
+                    raise ValueError(f"'{args.number}'은(는) 유효한 숫자가 아닙니다. 폴더 번호(1-99)를 입력해주세요.")
+
+        # 3. 각 모드별 기능 실행
         if mode in CREATE_KW:
-            if args.number is None: raise ValueError("번호가 필요합니다.")
-            fm.create_folder(args.number, args.name)
+            if target_num is None: raise ValueError("생성할 폴더의 번호가 필요합니다. (예: fm mk 1)")
+            fm.create_folder(target_num, args.name)
+            
         elif mode in DELETE_KW:
-            if args.number is None: raise ValueError("번호가 필요합니다.")
-            fm.archive_folder(args.number)
+            if target_num is None: raise ValueError("삭제(아카이브)할 폴더의 번호가 필요합니다. (예: fm rm 5)")
+            fm.archive_folder(target_num)
+            
         elif mode in FILL_KW:
             fm.fill_gaps()
+            
         elif mode in ROLLBACK_KW:
             fm.rollback()
+            
         elif mode in CLEAR_KW:
             fm.clear_history()
+        
+        elif mode in ANALYZE_KW:
+            if target_num is None: raise ValueError("분석할 번호가 필요합니다.")
+            fm.analyze_folder(target_num)
+
+        elif mode in TAG_KW:
+            if target_num is None: raise ValueError("번호가 필요합니다.")
+            fm.set_tag(target_num, args.name) # fm tag 1 프로젝트
+
         else:
             print(f"❌ 알 수 없는 모드: {mode}")
+
     except ValueError as e:
         print(f"❌ 입력 오류: {e}")
+    except Exception as e:
+        print(f"❌ 예상치 못한 오류 발생: {e}")
 
 if __name__ == "__main__":
     main()
