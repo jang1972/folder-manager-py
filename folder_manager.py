@@ -3,9 +3,6 @@
 # Dry-run, 01-99 제한, 롤백 및 경로 안전 검사 추가 버전
 # Made by Michelle | With Gemini | 2026
 # Edit Tool is VSC, Kate
-# 번호 기반 폴더 관리 및 자동 정렬 도구 (Folder Manager)
-# A number-based folder management and auto-alignment tool.
-# Copyright (C) 2026 Michelle (jang1972)
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -380,11 +377,19 @@ class FolderManager:
             print("💡 삭제할 이력이 없습니다.")
 
     def analyze_folder(self, target_num):
-        """폴더 내부의 파일 구성을 분석하여 태그 추천"""
+        """폴더 내부 분석 및 태그 정보 출력"""
         folders = self.get_numbered_folders()
-        if target_num not in folders: return
+        if target_num not in folders:
+            print(f"⚠️ {target_num:02d}번 폴더를 찾을 수 없습니다.")
+            return
         
         target_name = folders[target_num]
+        
+        # --- 추가된 태그 확인 로직 ---
+        tags = load_tags()
+        folder_tag = tags.get(target_name, "없음")
+        # --------------------------
+
         ext_count = {}
         total_size = 0
         
@@ -394,15 +399,15 @@ class FolderManager:
                 ext_count[ext] = ext_count.get(ext, 0) + 1
                 total_size += os.path.getsize(os.path.join(root, file))
         
-        # 가장 많이 발견된 확장자 기반 추천
+        size_mb = total_size / (1024 * 1024)
+        
+        print(f"📊 [{target_name}] 분석 결과:")
+        print(f"  📌 부여된 태그: [{folder_tag}]")  # 태그 출력
+        print(f"  💾 전체 용량: {size_mb:.2f} MB")
+        
         if ext_count:
             main_ext = max(ext_count, key=ext_count.get)
-            size_mb = total_size / (1024 * 1024)
-            print(f"📊 [{target_name}] 분석 결과:")
-            print(f"  - 주요 파일 형식: {main_ext} ({ext_count[main_ext]}개)")
-            print(f"  - 전체 용량: {size_mb:.2f} MB")
-            return main_ext
-        return None
+            print(f"  📂 주요 파일: {main_ext} ({ext_count[main_ext]}개)")
     def set_tag(self, target_num, tag):
         """특정 폴더에 커스텀 태그 부여"""
         folders = self.get_numbered_folders()
