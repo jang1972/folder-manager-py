@@ -345,31 +345,29 @@ func (fm *FolderManager) AnalyzeFolder(num int) {
 		return
 	}
 
-	var totalSize int64
-	extCount := make(map[string]int)
-
-	filepath.Walk(name, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
+	// --- 태그 정보 가져오기 ---
+	tags := make(map[string]string)
+	tagData, err := os.ReadFile(TagsFile)
+	folderTag := "없음"
+	if err == nil {
+		json.Unmarshal(tagData, &tags)
+		if t, exists := tags[name]; exists {
+			folderTag = t
 		}
-		if !info.IsDir() {
+	}
+	// -----------------------
+
+	var totalSize int64
+	filepath.Walk(name, func(path string, info os.FileInfo, err error) error {
+		if err == nil && !info.IsDir() {
 			totalSize += info.Size()
-			extCount[filepath.Ext(path)]++
 		}
 		return nil
 	})
 
 	fmt.Printf("📊 [%s] 분석 결과:\n", name)
-	fmt.Printf("  - 전체 용량: %.2f MB\n", float64(totalSize)/(1024*1024))
-	if len(extCount) > 0 {
-		fmt.Println("  - 파일 구성 (확장자별):")
-		for ext, count := range extCount {
-			if ext == "" {
-				ext = "(확장자 없음)"
-			}
-			fmt.Printf("    * %s: %d개\n", ext, count)
-		}
-	}
+	fmt.Printf("  📌 부여된 태그: [%s]\n", folderTag)
+	fmt.Printf("  💾 전체 용량: %.2f MB\n", float64(totalSize)/(1024*1024))
 }
 
 func (fm *FolderManager) SetTag(num int, tag string) {
