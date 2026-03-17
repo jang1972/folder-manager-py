@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "folder-manager-py"
+version = "0.3.5"  # 버전을 하나 올려주세요
+authors = [{ name="Michelle", email="pypi.undaunted900@passinbox.com" }]
+description = "A number-based folder management and auto-alignment tool."
+readme = "README.md"
+requires-python = ">=3.7"
+classifiers = ["License :: OSI Approved :: GNU General Public License v3 (GPLv3)"]
+
+[project.scripts]
+fm = "folder_manager.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]  # src 폴더 안에서 패키지를 찾으라고 명시
