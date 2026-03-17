@@ -1,18 +1,25 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "setuptools-scm"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "folder-manager-py"
-version = "0.3.5"  # 버전을 하나 올려주세요
+version = "0.3.5"
 authors = [{ name="Michelle", email="pypi.undaunted900@passinbox.com" }]
 description = "A number-based folder management and auto-alignment tool."
 readme = "README.md"
 requires-python = ">=3.7"
-classifiers = ["License :: OSI Approved :: GNU General Public License v3 (GPLv3)"]
+# 라이선스 경고 해결: SPDX 식별자 사용
+license = { text = "GPL-3.0-only" }
+
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: POSIX :: Linux",
+]
 
 [project.scripts]
-fm = "folder_manager.main:main"
+fm = "folder_manager:main"
 
-[tool.setuptools.packages.find]
-where = ["src"]  # src 폴더 안에서 패키지를 찾으라고 명시
+[tool.setuptools]
+# 파일들이 루트에 있으므로 패키지 자동 탐색 기능을 켭니다.
+packages = ["."]
