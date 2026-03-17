@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "setuptools-scm"]
+requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -9,17 +9,17 @@ authors = [{ name="Michelle", email="pypi.undaunted900@passinbox.com" }]
 description = "A number-based folder management and auto-alignment tool."
 readme = "README.md"
 requires-python = ">=3.7"
-# 라이선스 경고 해결: SPDX 식별자 사용
 license = { text = "GPL-3.0-only" }
-
 classifiers = [
     "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Operating System :: POSIX :: Linux",
 ]
 
 [project.scripts]
+# folder_manager.py 파일 안에 main 함수가 있다고 가정
 fm = "folder_manager:main"
 
 [tool.setuptools]
-# 파일들이 루트에 있으므로 패키지 자동 탐색 기능을 켭니다.
-packages = ["."]
+# 패키지를 수동으로 지정하는 대신, 현재 디렉토리(.)에서 자동으로 찾도록 설정
+packages = { find = { where = ["."] } }
