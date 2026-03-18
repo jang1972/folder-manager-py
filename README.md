@@ -38,7 +38,9 @@ I saw that YouTube shorts only showed things like 'How Google Employees Manage F
 
 - [PyPl-version](https://pypi.org/project/folder-manager-py/)
 
-PyPl에 올린 버전입니다. 심볼릭 링크가 불필요 합니다. 대신 pipx나 venv등 실행 난이도가 역으로 높을 수 있습니다. 물론 표준 라이브러리만 사용해서 의존성 요구가 극단적으로 널널한 만큼(CPtyhon 3.7 이상이기만 하면 됨.) 시스템 패키지 부수고(--break-system-packages) 설치하셔도 될 것 같긴한데 책임은 못 집니다. (This is the version uploaded to PyPl. Symbolic links are not required. If you do not use symbols, the difficulty of running applications like pipx or venv may actually increase. Of course, since it uses only standard libraries and has extremely loose dependency requirements (as long as you have CP107 or higher), it seems like you could install it by breaking system packages (--break-system-packages), but I cannot be held responsible for the consequences.)
+PyPl에 올린 버전입니다. 심볼릭 링크가 불필요 합니다. 대신 pipx나 venv등 실행 난이도가 역으로 높을 수 있습니다. 물론 표준 라이브러리만 사용해서 의존성 요구가 극단적으로 널널한 만큼(CPtyhon 3.7 이상이기만 하면 됨.) 시스템 패키지 부수고(--break-system-packages) 설치하셔도 될 것 같긴한데 책임은 못 집니다.
+
+(This is the version uploaded to PyPl. Symbolic links are not required. If you do not use symbols, the difficulty of running applications like pipx or venv may actually increase. Of course, since it uses only standard libraries and has extremely loose dependency requirements (as long as you have CP107 or higher), it seems like you could install it by breaking system packages (--break-system-packages), but I cannot be held responsible for the consequences.)
 
 ---
 
