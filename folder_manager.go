@@ -1,6 +1,6 @@
 // Made by Michelle
 // With Gemini
-// Edit Tool is Kate
+// Edit Tool is Kate, VSC
 // 리눅서일시 sudo ln -s "$(pwd)/folder_manager.py" /usr/local/bin/fm 또는 mkdir -p ~/.local/bin 후 ln -s "$(pwd)/folder_manager.py" ~/.local/bin/fm을 권장합니다.
 // 번호 기반 폴더 관리 및 자동 정렬 도구 (Folder Manager)
 // Copyright (C) 2026 Michelle (jang1972)
@@ -94,6 +94,22 @@ type HistoryData struct {
 type FolderManager struct {
 	DryRun  bool
 	History []HistoryItem
+}
+
+// 태그 데이터를 로드하는 함수 (KISS: 로컬 tags.json만 참조)
+func loadTags() map[string]string {
+	tags := make(map[string]string)
+	data, err := os.ReadFile("tags.json")
+	if err == nil {
+		json.Unmarshal(data, &tags)
+	}
+	return tags
+}
+
+// 태그 데이터를 저장하는 함수
+func saveTags(tags map[string]string) {
+	data, _ := json.MarshalIndent(tags, "", "  ")
+	os.WriteFile("tags.json", data, 0644)
 }
 
 // --- 3. 핵심 로직 메서드 ---
@@ -251,7 +267,7 @@ func (fm *FolderManager) CreateFolder(targetNum int, suffix string) {
 }
 
 func (fm *FolderManager) RenameFolder(oldName string, newNum int) {
-	match := folderPattern.FindStringSubmatch(oldName)
+	match := folderPattern.FindStringSubmatch(oldName) // 상단에 정의된 regex 사용
 	if match == nil {
 		return
 	}
@@ -261,9 +277,19 @@ func (fm *FolderManager) RenameFolder(oldName string, newNum int) {
 	}
 
 	fm.Log(fmt.Sprintf("이름 변경: %s -> %s", oldName, newName), "📝")
+
 	if !fm.DryRun {
-		os.Rename(oldName, newName)
-		fm.History = append(fm.History, HistoryItem{Old: oldName, New: newName})
+		// [핵심] 실제 파일 시스템의 이름을 먼저 변경
+		err := os.Rename(oldName, newName)
+		if err == nil {
+			// 성공 시에만 히스토리 기록
+			fm.History = append(fm.History, HistoryItem{Old: oldName, New: newName})
+
+			// [핵심] 이름이 바뀌었으므로 태그의 주인(Key)도 업데이트
+			fm.UpdateTagKey(oldName, newName)
+		} else {
+			fmt.Printf("❌ 이름 변경 실패: %v\n", err)
+		}
 	}
 }
 
@@ -467,6 +493,52 @@ func (fm *FolderManager) Rollback() {
 	fmt.Printf("✅ [%s] 작업 롤백 완료. (남은 기록: %d개)\n", task.Mode, len(stack))
 }
 
+func (fm *FolderManager) FillGaps() {
+	folders := fm.GetNumberedFolders()
+	if len(folders) == 0 {
+		fmt.Println("❌ 정리할 폴더가 없습니다.")
+		return
+	}
+	keys := []int{}
+	for k := range folders {
+		keys = append(keys, k)
+	}
+	sort.Ints(keys)
+	for i, k := range keys {
+		if k != i+1 {
+			fm.RenameFolder(folders[k], i+1)
+		}
+	}
+	fm.SaveHistory("fill")
+	fmt.Println("✅ 빈자리 채우기 완료.")
+}
+
+func (fm *FolderManager) ClearHistory() {
+	if _, err := os.Stat(HISTORY_FILE); err == nil {
+		if fm.DryRun {
+			fm.Log("기록 삭제 시뮬레이션", "🔍")
+		} else {
+			err := os.Remove(HISTORY_FILE)
+			if err != nil {
+				fmt.Println("❌ 오류: 기록 삭제 실패")
+				return
+			}
+			fmt.Println("✅ 모든 작업 이력이 삭제되었습니다. (롤백 불가)")
+		}
+	} else {
+		fmt.Println("💡 삭제할 이력이 없습니다.")
+	}
+}
+
+func (fm *FolderManager) UpdateTagKey(oldName, newName string) {
+	tags := loadTags() // 기존에 구현된 loadTags 호출
+	if tag, alt := tags[oldName]; alt {
+		delete(tags, oldName)
+		tags[newName] = tag
+		saveTags(tags) // 기존에 구현된 saveTags 호출
+	}
+}
+
 // --- 4. 메인 실행부 및 도움말 ---
 func main() {
 	for _, arg := range os.Args {
@@ -556,7 +628,7 @@ func main() {
 			fmt.Printf("✅ 아카이브 경로가 설정되었습니다: %s\n", path)
 		}
 
-	case "tag", "유형":
+	case "tag", "태그", "유형":
 		if len(args) < 3 {
 			fmt.Println("❌ 번호와 태그명이 필요합니다.")
 			return
@@ -564,7 +636,7 @@ func main() {
 		num, _ := strconv.Atoi(args[1])
 		fm.SetTag(num, args[2])
 
-	case "analyze", "태그", "분석":
+	case "analyze", "분석":
 		if len(args) < 2 {
 			fmt.Println("❌ 번호가 필요합니다.")
 			return
@@ -574,42 +646,5 @@ func main() {
 
 	default:
 		fmt.Printf("❌ 알 수 없는 모드: %s. 'fm --help'를 확인하세요.\n", mode)
-	}
-}
-
-func (fm *FolderManager) FillGaps() {
-	folders := fm.GetNumberedFolders()
-	if len(folders) == 0 {
-		fmt.Println("❌ 정리할 폴더가 없습니다.")
-		return
-	}
-	keys := []int{}
-	for k := range folders {
-		keys = append(keys, k)
-	}
-	sort.Ints(keys)
-	for i, k := range keys {
-		if k != i+1 {
-			fm.RenameFolder(folders[k], i+1)
-		}
-	}
-	fm.SaveHistory("fill")
-	fmt.Println("✅ 빈자리 채우기 완료.")
-}
-
-func (fm *FolderManager) ClearHistory() {
-	if _, err := os.Stat(HISTORY_FILE); err == nil {
-		if fm.DryRun {
-			fm.Log("기록 삭제 시뮬레이션", "🔍")
-		} else {
-			err := os.Remove(HISTORY_FILE)
-			if err != nil {
-				fmt.Println("❌ 오류: 기록 삭제 실패")
-				return
-			}
-			fmt.Println("✅ 모든 작업 이력이 삭제되었습니다. (롤백 불가)")
-		}
-	} else {
-		fmt.Println("💡 삭제할 이력이 없습니다.")
 	}
 }
