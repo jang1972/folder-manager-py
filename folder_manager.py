@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # 리눅서일시 sudo ln -s "$(pwd)/folder_manager.py" /usr/local/bin/fm 또는 mkdir -p ~/.local/bin 후 ln -s "$(pwd)/folder_manager.py" ~/.local/bin/fm을 권장합니다.
-# Dry-run, 01-99 제한, 롤백 및 경로 안전 검사 추가 버전
+# sudo를 사용하지 않는 후자가 더 안전하긴 합니다.
 # Made by Michelle | With Gemini | 2026
 # Edit Tool is VSC, Kate
 #
@@ -53,7 +53,7 @@ ASCII_ART = r"""
 ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣶⣶⣶⣆⢀⡔⢛⣕⢂⢲⡝⠓⢄⢀⣶⣶⣶⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
 ⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿
 """
-
+# 사전 설정
 ARCHIVE_FOLDER_NAME = "Archive"
 MAX_FOLDER_NUMBER = 99
 HISTORY_FILE = ".fm_history.json"
@@ -72,6 +72,7 @@ SETPATH_KW=['set-archive', '경로설정']
 ANALYZE_KW=['analyze', '분석']
 TAG_KW=['tag', '태그', '유형']
 
+# config는 객체 바깥에 있어야 정상 작동 함.
 def save_config(config):
     try:
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
@@ -102,8 +103,9 @@ def save_tags(tags):
         json.dump(tags, f, ensure_ascii=False, indent=2)
 
 # --- 2. 로직 클래스 ---
+# 이게 메서드들끼리 응접도가 매우 높아서 객체를 2개로 쪼개면 의존성 지옥에 걸리는 지라 디버깅과 유지보수가 오히려 빡세집니다.
 class FolderManager:
-
+    #객체 설정
     def __init__(self, dry_run=False):
         self.dry_run = dry_run
         self.folder_pattern = re.compile(r'^(\d+)\_(.*)$')
@@ -165,6 +167,7 @@ class FolderManager:
         # 설정이 없으면 기존처럼 현재 경로의 Archive 폴더 반환
         return config.get("archive_path", os.path.join(os.getcwd(), ARCHIVE_FOLDER_NAME))
     
+    # 예악어 경고 출력
     def is_valid_suffix(self, suffix):
         if os.path.sep in suffix or (os.path.altsep and os.path.altsep in suffix):
             print("❌ 오류: 이름에 경로 구분자가 포함될 수 없습니다.")
@@ -227,6 +230,7 @@ class FolderManager:
             self.log(f"이름 변경: {old_name} -> {new_name}", emoji="📝")
             if self.safe_execute(os.rename, old_name, new_name):
                 self.add_history(old_name, new_name)
+                self._update_tag_key(old_name, new_name)
 
     def handle_archive_collision(self, archive_path, target_name):
         safe_name = os.path.basename(target_name)
@@ -408,6 +412,7 @@ class FolderManager:
         if ext_count:
             main_ext = max(ext_count, key=ext_count.get)
             print(f"  📂 주요 파일: {main_ext} ({ext_count[main_ext]}개)")
+
     def set_tag(self, target_num, tag):
         """특정 폴더에 커스텀 태그 부여"""
         folders = self.get_numbered_folders()
@@ -419,6 +424,12 @@ class FolderManager:
         save_tags(tags)
         print(f"✅ 태그 등록 완료: {folder_name} -> [{tag}]")
 
+    def _update_tag_key(self, old_name, new_name):
+        """폴더명이 바뀌면 태그 파일의 키값도 교체"""
+        tags = load_tags() # 기존 오리진의 함수 활용
+        if old_name in tags:
+            tags[new_name] = tags.pop(old_name)
+            save_tags(tags)
 # --- 3. 실행 인터페이스 ---
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "--license":
