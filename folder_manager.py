@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # 리눅서일시 sudo ln -s "$(pwd)/folder_manager.py" /usr/local/bin/fm 또는 mkdir -p ~/.local/bin 후 ln -s "$(pwd)/folder_manager.py" ~/.local/bin/fm을 권장합니다.
-# sudo를 사용하지 않는 후자가 더 안전하긴 합니다.
+# Dry-run, 01-99 제한, 롤백 및 경로 안전 검사 추가 버전
 # Made by Michelle | With Gemini | 2026
 # Edit Tool is VSC, Kate
 #
@@ -391,7 +391,11 @@ class FolderManager:
         
         # --- 추가된 태그 확인 로직 ---
         tags = load_tags()
-        folder_tag = tags.get(target_name, "없음")
+        search_name = os.path.normpath(target_name)
+        if os.name == 'nt':
+            search_name = search_name.lower()
+
+        folder_tag = tags.get(search_name, "없음")
         # --------------------------
 
         ext_count = {}
@@ -414,15 +418,18 @@ class FolderManager:
             print(f"  📂 주요 파일: {main_ext} ({ext_count[main_ext]}개)")
 
     def set_tag(self, target_num, tag):
-        """특정 폴더에 커스텀 태그 부여"""
         folders = self.get_numbered_folders()
         if target_num not in folders: return
-        
+
         tags = load_tags()
-        folder_name = folders[target_num]
+        # 경로 구분자를 통일하고 윈도우라면 소문자로 정규화하여 저장
+        folder_name = os.path.normpath(folders[target_num])
+        if os.name == 'nt': # 윈도우일 경우
+            folder_name = folder_name.lower()
+
         tags[folder_name] = tag
         save_tags(tags)
-        print(f"✅ 태그 등록 완료: {folder_name} -> [{tag}]")
+        print(f"✅ 태그 등록 완료: {folders[target_num]} -> [{tag}]")
 
     def _update_tag_key(self, old_name, new_name):
         """폴더명이 바뀌면 태그 파일의 키값도 교체"""
