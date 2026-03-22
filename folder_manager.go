@@ -531,11 +531,26 @@ func (fm *FolderManager) ClearHistory() {
 }
 
 func (fm *FolderManager) UpdateTagKey(oldName, newName string) {
-	tags := loadTags() // 기존에 구현된 loadTags 호출
-	if tag, alt := tags[oldName]; alt {
-		delete(tags, oldName)
-		tags[newName] = tag
-		saveTags(tags) // 기존에 구현된 saveTags 호출
+	tags := loadTags()
+
+	// 1. 대소문자 및 경로 구분자 이슈 해결을 위해 정규화된 키로 비교
+	standardOld := filepath.Clean(oldName)
+	found := false
+	var actualKey string
+
+	for k := range tags {
+		if filepath.Clean(k) == standardOld {
+			actualKey = k
+			found = true
+			break
+		}
+	}
+
+	if found {
+		tagValue := tags[actualKey]
+		delete(tags, actualKey)                  // 확실하게 기존 키 삭제
+		tags[filepath.Clean(newName)] = tagValue // 새 키는 정규화해서 저장
+		saveTags(tags)
 	}
 }
 
