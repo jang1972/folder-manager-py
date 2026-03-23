@@ -8,6 +8,16 @@ License: This project is licensed under the GPL-3.0 License - see the [LICENSE](
 
 ---
 
+## 기술적 자유를 위하여
+
+구글이 안드로이드에서 제3자 앱을 실행 차단하여 사용자의 권리를 침해하려 하고 있습니다. 이를 막가 위해 도움을 보태 주시길 부탁 드립니다.
+
+Google is trying to violate users' rights by blocking third-party apps from Android. Please help me stop this.
+
+**[keepandroidopen Project](https://keepandroidopen.org)**
+
+---
+
 ## 🚀 개요 (Overview)
 
 이 프로젝트는 프로그래밍 뉴비가 취미로 만든 간단한 파이썬 스크립트입니다. 이 뉴비는 한국인이기에 한국어 주석이 포함 되어 있습니다.
