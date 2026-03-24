@@ -13,6 +13,8 @@ echo 초기화, 비우기, reset, clear 입력시 이 프로그램의 로그(기
 echo 분석, analyze 입력시 해당 폴더의 크기와 태그를 확인 가능합니다.
 echo https://github.com/jang1972/folder-manager-py/releases에 방문하시면 최신 버전을 다운로드 가능합니다
 echo 본 도구는 GNU 공중 이용 허가서 3.0 제15조항과 제16조항에 따라 어떠한 형태의 보증도 제공하지 않습니다.
+echo 구글이 안드로이드에서 제3자 앱을 실행 차단하여 사용자의 권리를 침해하려 하고 있습니다. 이를 막기 위해 도움을 보태 주시길 부탁 드립니다.
+echo https://keepandroidopen.org
 echo --------------------------------------------------
 
 :loop
