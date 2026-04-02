@@ -91,12 +91,29 @@ The fundamental copyright for the characters and designs belongs to **miHoYo Net
 
 ## 🔧 설치 및 사용법 (Installation & Usage)
 
-파일명 변경 : 자주 사용하실거라면 심볼릭 링크를 걸지 않을 경우 'fm'으로 파일명을 교체하는 것을 권장 드립니다.
+파일명 변경 : 자주 사용하실거라면 소스 코드나 바이너리 파일을 직접 다운로드 받으실 경우, 배치 스크립트를 사용하지 않으시는 경우'fm'으로 파일명을 교체하는 것을 권장 드립니다.
 
-### Recommended for Linux:
+Renaming: If you plan to use it frequently, download the source code or binary files directly, or do not use batch scripts, we recommend renaming the file to 'fm'.
+
+### Recommended for Linux, BSD:
 ```bash
 mkdir -p ~/.local/bin
 ln -s "$(pwd)/folder_manager.py" ~/.local/bin/fm
+```
+
+```bash
+sudo (You Use Pakage Manager) pipx
+pipx install folder-manager-py
+```
+
+### Recommended for Arch AUR
+```bash
+yay -S folder-manager-py
+paru -S folder-manager-py
+```
+### Recommended for Python (Windows, Darwin)
+```cmd
+pip install folder-manager-py
 ```
 
 ---
