@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "folder-manager-py"
 version = "0.3.6"
-authors = [{ name="Michelle", email="pypi.undaunted900@passinbox.com" }]
+authors = [{ name="Michelle", email="michellejang1972@gmail.com" }]
 description = "A number-based folder management and auto-alignment tool."
 readme = "README.md"
 requires-python = ">=3.7"
