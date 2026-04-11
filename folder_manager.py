@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 # 리눅서일시 sudo ln -s "$(pwd)/folder_manager.py" /usr/local/bin/fm 또는 mkdir -p ~/.local/bin 후 ln -s "$(pwd)/folder_manager.py" ~/.local/bin/fm을 권장합니다.
-# Dry-run, 01-99 제한, 롤백 및 경로 안전 검사 추가 버전
 # Made by Michelle | With Gemini | 2026
 # Edit Tool is VSC, Kate
 #
@@ -73,22 +72,23 @@ ANALYZE_KW=['analyze', '분석']
 TAG_KW=['tag', '태그', '유형']
 
 # config는 객체 바깥에 있어야 정상 작동 함.
-def save_config(config):
-    try:
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(config, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        print(f"❌ 설정 저장 중 오류 발생: {e}")
 
-def load_config():
-    if os.path.exists(CONFIG_FILE):
+def load_config(path=CONFIG_FILE): # 경로를 인자로 받도록 수정
+    if os.path.exists(path):
         try:
-            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            with open(path, "r", encoding="utf-8") as f: # 여기서 콤마(,) 누락된 오타 수정됨
                 data = json.load(f)
                 return data if isinstance(data, dict) else {}
         except:
             return {}
     return {}
+
+def save_config(config):
+    try:
+          with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+           print(f"❌ 설정 저장 중 오류 발생: {e}")
 
 def load_tags():
     if os.path.exists(TAGS_FILE):
@@ -102,15 +102,54 @@ def save_tags(tags):
     with open(TAGS_FILE, "w", encoding="utf-8") as f:
         json.dump(tags, f, ensure_ascii=False, indent=2)
 
+
 # --- 2. 로직 클래스 ---
-# 이게 메서드들끼리 응접도가 매우 높아서 객체를 2개로 쪼개면 의존성 지옥에 걸리는 지라 디버깅과 유지보수가 오히려 빡세집니다.
+# 이게 메서드들끼리 응집도가 매우 높아서 객체를 2개로 쪼개면 의존성 지옥에 걸리는지라 디버깅과 유지보수가 오히려 빡세집니다.
 class FolderManager:
     #객체 설정
     def __init__(self, dry_run=False):
+        # 1. 먼저 기본 config 로드 (이때는 기본 위치에서 읽음)
+        base_config = load_config(CONFIG_FILE) 
+        self.data_dir = base_config.get("data_dir", os.path.join(os.getcwd(), ".json"))
+        
+        if not os.path.exists(self.data_dir):
+            os.makedirs(self.data_dir, exist_ok=True)
+            
+        # 2. 모든 경로를 .json 폴더 내부로 확정 (인스턴스 변수화)
+        self.lock_file_path = os.path.join(self.data_dir, ".fm.lock")
+        
+        # 3. 확정된 경로로 다시 설정 로드
+        self.config = load_config(CONFIG_FILE)
+        self._check_lock()
         self.dry_run = dry_run
         self.folder_pattern = re.compile(r'^(\d+)\_(.*)$')
         self.history = []
         self._check_path_safety()
+
+    def _check_lock(self):
+        # .json 폴더 안의 락 파일 경로
+        self.lock_file_path = os.path.join(self.data_dir, ".fm.lock")
+        
+        try:
+            # os.O_CREAT | os.O_EXCL 조합은 파일이 존재하면 무조건 FileExistsError 발생
+            fd = os.open(self.lock_file_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            with os.fdopen(fd, 'w') as f:
+                f.write(str(os.getpid()))
+        except FileExistsError:
+            print("❌ 에러: 이미 동일한 경로에서 프로그램이 실행 중입니다. (.lock 파일 확인)")
+            sys.exit(1)
+        except Exception as e:
+            print(f"❌ 락 생성 중 오류 발생: {e}")
+            sys.exit(1)
+
+    def __del__(self):
+        # 객체가 소멸될 때 (프로그램 종료 시) 락 파일 제거
+        # hasattr 체크는 초기화 도중 에러가 났을 때를 대비함
+        if hasattr(self, 'lock_file_path') and os.path.exists(self.lock_file_path):
+            try:
+                os.remove(self.lock_file_path)
+            except:
+                pass
 
     def _check_path_safety(self):
         """민감한 시스템 경로에서의 실행 방지"""
@@ -183,21 +222,24 @@ class FolderManager:
     def save_history(self, mode):
         if self.dry_run or not self.history: return
         stack = []
+        # HISTORY_FILE -> HISTORY_FILE 로 변경
         if os.path.exists(HISTORY_FILE):
             try:
                 with open(HISTORY_FILE, "r", encoding="utf-8") as f:
                     stack = json.load(f)
-                    if not isinstance(stack, list): stack = []
-            except Exception:
+            except:
                 stack = []
 
-        # 새 작업 추가 및 JSON 구조 완성
         data = {
             "mode": mode,
             "changes": self.history,
             "timestamp": datetime.now().strftime('%Y%m%d%H%M%S')
         }
         stack.append(data)
+
+        # 쓰기 경로도 HISTORY_FILE 로 변경
+        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(stack, f, ensure_ascii=False, indent=2)
 
         # 안전한 직렬화: utf-8 명시 및 인젝션 방지를 위한 인자 설정
         with open(HISTORY_FILE, "w", encoding="utf-8") as f:
@@ -356,10 +398,12 @@ class FolderManager:
             old, new = item["old"], item["new"]
             if old is None: # 생성 취소
                 self.log(f"삭제(취소): {new}", emoji="🗑️")
-                self.safe_execute(os.rmdir, new)
-            else: # 이름 변경/아카이브 취소
+                if self.safe_execute(os.rmdir, new):
+                    self._update_tag_key(new, None) # 태그 삭제 처리 추가
+            else: # 이동 복구
                 self.log(f"복구: {new} -> {old}", emoji="↩️")
-                self.safe_execute(shutil.move, new, old)
+                if self.safe_execute(shutil.move, new, old):
+                    self._update_tag_key(new, old) # 태그 키 복구 처리 추가
 
         # 3. 남은 스택 업데이트
         if stack:
