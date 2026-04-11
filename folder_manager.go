@@ -68,6 +68,7 @@ const (
 
 type Config struct {
 	ArchivePath string `json:"archive_path"`
+	DataDir     string `json:"data_dir"`
 }
 
 var (
@@ -92,14 +93,19 @@ type HistoryData struct {
 }
 
 type FolderManager struct {
-	DryRun  bool
-	History []HistoryItem
+	ConfigPath  string // .json/.fm_config.json
+	HistoryPath string // .json/.fm_history.json
+	TagsPath    string // .json/.fm_tags.json
+	Config      Config
+	DryRun      bool
+	History     []HistoryItem
+	lockFile    *os.File
 }
 
-// 태그 데이터를 로드하는 함수 (KISS: 로컬 tags.json만 참조)
+// 태그 데이터를 로드하는 함수
 func loadTags() map[string]string {
 	tags := make(map[string]string)
-	data, err := os.ReadFile("tags.json")
+	data, err := os.ReadFile(TagsFile)
 	if err == nil {
 		json.Unmarshal(data, &tags)
 	}
@@ -109,7 +115,7 @@ func loadTags() map[string]string {
 // 태그 데이터를 저장하는 함수
 func saveTags(tags map[string]string) {
 	data, _ := json.MarshalIndent(tags, "", "  ")
-	os.WriteFile("tags.json", data, 0644)
+	os.WriteFile(TagsFile, data, 0644)
 }
 
 // --- 3. 핵심 로직 메서드 ---
@@ -554,6 +560,39 @@ func (fm *FolderManager) UpdateTagKey(oldName, newName string) {
 	}
 }
 
+func (fm *FolderManager) AcquireLock() error {
+	// .json 폴더가 없으면 생성 (OS 의존성 없음)
+	if err := os.MkdirAll(fm.Config.DataDir, 0755); err != nil {
+		return fmt.Errorf("데이터 디렉토리 생성 실패: %v", err)
+	}
+
+	lockPath := filepath.Join(fm.Config.DataDir, ".fm.lock")
+	// os.O_EXCL: 파일이 이미 존재하면 에러를 발생시킴 (원자적 체크)
+	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return fmt.Errorf("이미 이 경로에서 다른 fm 프로세스가 실행 중입니다.\n직압증인게 이닐시 락 파일을 확인하세요,")
+	}
+
+	// 실행 중인 PID 기록 (디버깅용, 필수는 아님)
+	fmt.Fprintf(f, "%d", os.Getpid())
+	fm.lockFile = f
+	return nil
+}
+
+func (fm *FolderManager) ReleaseLock() {
+	if fm.lockFile != nil {
+		fm.lockFile.Close()
+		os.Remove(fm.lockFile.Name())
+	}
+}
+
+func InitManager(dryRun bool) *FolderManager {
+	// 경로 설정 로직 삭제, 구조체만 반환
+	return &FolderManager{
+		DryRun: dryRun,
+	}
+}
+
 // --- 4. 메인 실행부 및 도움말 ---
 func main() {
 	for _, arg := range os.Args {
@@ -592,8 +631,14 @@ func main() {
 		return
 	}
 
-	fm := &FolderManager{DryRun: *dryRun}
+	fm := InitManager(*dryRun)
 	fm.CheckPathSafety() // 경로 안전 검사 실행
+
+	if err := fm.AcquireLock(); err != nil {
+		fmt.Printf("❌ %v\n", err)
+		return
+	}
+	defer fm.ReleaseLock()
 
 	mode := strings.ToLower(args[0])
 
