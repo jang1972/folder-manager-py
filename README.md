@@ -1,4 +1,4 @@
-<img width="720" height="426" alt="image" src="https://github.com/user-attachments/assets/553e1e52-997f-44e7-9c8b-a1b97ac8d67b" />
+<img width="100%" height="100%" alt="image" src="https://github.com/user-attachments/assets/553e1e52-997f-44e7-9c8b-a1b97ac8d67b" />
 
 
 # Folder Manager (fm) - golang-version
