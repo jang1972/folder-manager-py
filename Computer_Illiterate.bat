@@ -1,5 +1,6 @@
 @echo off
-chcp 65001 > nul
+chcp 949 > nul
+
 title 폴더 매니저 전용 터미널
 
 echo.
