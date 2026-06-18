@@ -528,12 +528,16 @@ def main():
             # number 자리에 경로가 올 수도 있고, name 자리에 올 수도 있음
             new_path_raw = args.number if args.number else args.name
             new_path = os.path.abspath(new_path_raw if new_path_raw != "새폴더" else ".")
-            
-            if fm.check_path_access(new_path):
-                config = load_config()
-                config["archive_path"] = new_path
-                save_config(config)
-                print(f"✅ 아카이브 경로가 설정되었습니다: {new_path}")
+            if not new_path_raw:
+                print("❌ 설정할 경로(인자값)를 입력해주세요.")
+                return
+            if not fm.check_path_access(new_path):
+                print("❌ 접근 권한이 없는 경로입니다.") # 상황에 맞는 안내 메시지
+                return  # 혹은 상황에 따라 continue/pass
+            config = load_config()
+            config["archive_path"] = new_path
+            save_config(config)
+            print(f"✅ 아카이브 경로가 설정되었습니다: {new_path}")
             return # 설정 완료 후 종료
 
         # 2. 번호가 필요한 모드들을 위한 숫자 변환 로직
