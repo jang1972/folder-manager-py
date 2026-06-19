@@ -237,10 +237,6 @@ class FolderManager:
         }
         stack.append(data)
 
-        # 쓰기 경로도 HISTORY_FILE 로 변경
-        with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-            json.dump(stack, f, ensure_ascii=False, indent=2)
-
         # 안전한 직렬화: utf-8 명시 및 인젝션 방지를 위한 인자 설정
         with open(HISTORY_FILE, "w", encoding="utf-8") as f:
             json.dump(stack, f, ensure_ascii=False, indent=2)
