@@ -1,7 +1,7 @@
 // Made by Michelle
 // With Gemini
 // Edit Tool is Kate, VSC
-// 리눅서일시 sudo ln -s "$(pwd)/folder_manager.py" /usr/local/bin/fm 또는 mkdir -p ~/.local/bin 후 ln -s "$(pwd)/folder_manager.py" ~/.local/bin/fm을 권장합니다.
+// 리눅서일시 sudo ln -s "$(pwd)/folder_manager" /usr/local/bin/fm 또는 mkdir -p ~/.local/bin 후 ln -s "$(pwd)/folder_manager" ~/.local/bin/fm을 권장합니다.
 // 번호 기반 폴더 관리 및 자동 정렬 도구 (Folder Manager)
 // Copyright (C) 2026 Michelle (jang1972)
 // This program is free software: you can redistribute it and/or modify
@@ -62,7 +62,7 @@ const (
 	MAX_FOLDER_NUM = 99
 	HISTORY_FILE   = ".fm_history.json"
 	TIME_FORMAT    = "20060102150405"
-	ConfigFile     = ".fm_config.json"
+	ConfigFile     = ".json/.fm_config.json"
 	TagsFile       = ".fm_tags.json"
 )
 
@@ -74,7 +74,6 @@ type Config struct {
 var (
 	folderPattern  = regexp.MustCompile(`^(\d{2})_(.*)$`)
 	forbiddenChars = regexp.MustCompile(`[\\/:*?"<>|]`)
-	// 시스템 민감 경로 키워드
 	sensitivePaths = []string{"/etc", "/usr", "/bin", "/sbin", "C:\\Windows", "C:\\Program Files"}
 )
 
@@ -93,34 +92,39 @@ type HistoryData struct {
 }
 
 type FolderManager struct {
-	ConfigPath  string // .json/.fm_config.json
-	HistoryPath string // .json/.fm_history.json
-	TagsPath    string // .json/.fm_tags.json
+	ConfigPath  string
+	HistoryPath string
+	TagsPath    string
 	Config      Config
 	DryRun      bool
 	History     []HistoryItem
 	lockFile    *os.File
 }
 
-// 태그 데이터를 로드하는 함수
-func loadTags() map[string]string {
+func (fm *FolderManager) loadTags() map[string]string {
+	path := fm.TagsPath
+	if path == "" {
+		path = TagsFile
+	}
 	tags := make(map[string]string)
-	data, err := os.ReadFile(TagsFile)
+	data, err := os.ReadFile(path)
 	if err == nil {
 		json.Unmarshal(data, &tags)
 	}
 	return tags
 }
 
-// 태그 데이터를 저장하는 함수
-func saveTags(tags map[string]string) {
+func (fm *FolderManager) saveTags(tags map[string]string) {
+	path := fm.TagsPath
+	if path == "" {
+		path = TagsFile
+	}
 	data, _ := json.MarshalIndent(tags, "", "  ")
-	os.WriteFile(TagsFile, data, 0644)
+	os.WriteFile(path, data, 0644)
 }
 
 // --- 3. 핵심 로직 메서드 ---
 
-// 경로 안전성 검사 (추가된 기능 3)
 func (fm *FolderManager) CheckPathSafety() {
 	currPath, err := os.Getwd()
 	if err != nil {
@@ -128,13 +132,11 @@ func (fm *FolderManager) CheckPathSafety() {
 		os.Exit(1)
 	}
 
-	// 1. 루트 디렉토리 검사
 	if currPath == filepath.Clean(string(os.PathSeparator)) || currPath == "C:\\" {
 		fmt.Println("❌ 위험: 루트 디렉토리에서 작업을 수행할 수 없습니다.")
 		os.Exit(1)
 	}
 
-	// 2. 민감 디렉토리 검사
 	for _, sp := range sensitivePaths {
 		if strings.HasPrefix(strings.ToLower(currPath), strings.ToLower(sp)) {
 			fmt.Printf("❌ 위험: 시스템 경로(%s) 내에서 작업을 수행할 수 없습니다.\n", sp)
@@ -164,7 +166,6 @@ func (fm *FolderManager) SafePathCheck(path string) bool {
 	currPath, _ := os.Getwd()
 	absBase, _ := filepath.Abs(currPath)
 	absTarget, _ := filepath.Abs(path)
-	// 현재 디렉토리의 하위 경로인지 확인
 	return strings.HasPrefix(absTarget, absBase)
 }
 
@@ -193,27 +194,6 @@ func (fm *FolderManager) GetNumberedFolders() map[int]string {
 	return folders
 }
 
-func (fm *FolderManager) SaveHistory(mode string) {
-	if fm.DryRun || len(fm.History) == 0 {
-		return
-	}
-
-	var stack []HistoryData
-	if data, err := os.ReadFile(HISTORY_FILE); err == nil {
-		json.Unmarshal(data, &stack)
-	}
-
-	newAction := HistoryData{
-		Mode:      mode,
-		Changes:   fm.History,
-		Timestamp: time.Now().Format(TIME_FORMAT),
-	}
-	stack = append(stack, newAction) // Stack에 추가
-
-	file, _ := json.MarshalIndent(stack, "", "  ")
-	os.WriteFile(HISTORY_FILE, file, 0600)
-}
-
 func (fm *FolderManager) CreateFolder(targetNum int, suffix string) {
 	if targetNum < 1 || targetNum > MAX_FOLDER_NUM {
 		fmt.Println("❌ 오류: 번호는 01~99 사이여야 합니다.")
@@ -234,7 +214,6 @@ func (fm *FolderManager) CreateFolder(targetNum int, suffix string) {
 
 	folders := fm.GetNumberedFolders()
 	if _, exists := folders[targetNum]; exists {
-		// 밀어내기 시 99번 초과 검사
 		maxNum := 0
 		for k := range folders {
 			if k > maxNum {
@@ -261,7 +240,6 @@ func (fm *FolderManager) CreateFolder(targetNum int, suffix string) {
 	newName := fmt.Sprintf("%02d_%s", targetNum, suffix)
 	fm.Log("폴더 생성: "+newName, "📁")
 	if !fm.DryRun {
-		// 기존에 동일한 이름의 파일/폴더가 있는지 먼저 확인
 		if _, err := os.Stat(newName); err == nil {
 			fmt.Printf("❌ 오류: '%s'이(가) 이미 존재합니다.\n", newName)
 			return
@@ -273,7 +251,7 @@ func (fm *FolderManager) CreateFolder(targetNum int, suffix string) {
 }
 
 func (fm *FolderManager) RenameFolder(oldName string, newNum int) {
-	match := folderPattern.FindStringSubmatch(oldName) // 상단에 정의된 regex 사용
+	match := folderPattern.FindStringSubmatch(oldName)
 	if match == nil {
 		return
 	}
@@ -285,13 +263,9 @@ func (fm *FolderManager) RenameFolder(oldName string, newNum int) {
 	fm.Log(fmt.Sprintf("이름 변경: %s -> %s", oldName, newName), "📝")
 
 	if !fm.DryRun {
-		// [핵심] 실제 파일 시스템의 이름을 먼저 변경
 		err := os.Rename(oldName, newName)
 		if err == nil {
-			// 성공 시에만 히스토리 기록
 			fm.History = append(fm.History, HistoryItem{Old: oldName, New: newName})
-
-			// [핵심] 이름이 바뀌었으므로 태그의 주인(Key)도 업데이트
 			fm.UpdateTagKey(oldName, newName)
 		} else {
 			fmt.Printf("❌ 이름 변경 실패: %v\n", err)
@@ -309,7 +283,6 @@ func (fm *FolderManager) ArchiveFolder(targetNum int) {
 
 	if !fm.DryRun {
 		os.MkdirAll(ARCHIVE_DIR, 0755)
-		// 인젝션 방어: targetName에서 순수 이름만 추출
 		safeName := filepath.Base(targetName)
 		dest := filepath.Join(ARCHIVE_DIR, safeName)
 
@@ -344,17 +317,14 @@ func (fm *FolderManager) ArchiveFolder(targetNum int) {
 	}
 }
 
-// 아카이브 경로 가져오기
 func (fm *FolderManager) getArchivePath() string {
 	config := loadConfig()
 	if config.ArchivePath != "" {
 		return config.ArchivePath
 	}
-	// 현재 실행 경로(.)의 Archive 폴더를 기본값으로 설정
 	return filepath.Join(".", "Archive")
 }
 
-// 권한 및 경로 체크
 func (fm *FolderManager) checkPathAccess(path string) bool {
 	if path == "" {
 		return false
@@ -377,17 +347,11 @@ func (fm *FolderManager) AnalyzeFolder(num int) {
 		return
 	}
 
-	// --- 태그 정보 가져오기 ---
-	tags := make(map[string]string)
-	tagData, err := os.ReadFile(TagsFile)
+	tags := fm.loadTags()
 	folderTag := "없음"
-	if err == nil {
-		json.Unmarshal(tagData, &tags)
-		if t, exists := tags[name]; exists {
-			folderTag = t
-		}
+	if t, exists := tags[name]; exists {
+		folderTag = t
 	}
-	// -----------------------
 
 	var totalSize int64
 	filepath.Walk(name, func(path string, info os.FileInfo, err error) error {
@@ -409,20 +373,20 @@ func (fm *FolderManager) SetTag(num int, tag string) {
 		return
 	}
 
-	tags := make(map[string]string)
-	data, err := os.ReadFile(TagsFile)
-	if err == nil {
-		json.Unmarshal(data, &tags)
-	}
-
+	tags := fm.loadTags()
 	tags[name] = tag
-	newData, _ := json.MarshalIndent(tags, "", "  ")
-	os.WriteFile(TagsFile, newData, 0644)
+	fm.saveTags(tags)
+
 	fmt.Printf("✅ 태그 등록 완료: %s -> [%s]\n", name, tag)
 }
 
 func (fm *FolderManager) Rollback() {
-	data, err := os.ReadFile(HISTORY_FILE)
+	path := fm.HistoryPath
+	if path == "" {
+		path = HISTORY_FILE
+	}
+
+	data, err := os.ReadFile(path)
 	if err != nil {
 		fmt.Println("❌ 오류: 되돌릴 작업 이력이 없습니다.")
 		return
@@ -436,19 +400,16 @@ func (fm *FolderManager) Rollback() {
 
 	if len(stack) == 0 {
 		fmt.Println("❌ 오류: 기록이 비어있습니다.")
-		os.Remove(HISTORY_FILE)
+		os.Remove(path)
 		return
 	}
 
-	// 마지막 작업(Top) 꺼내기
 	lastIdx := len(stack) - 1
 	task := stack[lastIdx]
 
 	fm.Log(fmt.Sprintf("롤백 시작: %s (%s)", task.Mode, task.Timestamp), "🔄")
 
-	// 1. 사전 검증
 	for _, item := range task.Changes {
-		// 경로 인젝션 검증 (추가)
 		if !fm.SafePathCheck(item.New) || !fm.SafePathCheck(item.Old) {
 			fmt.Println("❌ 보안 경고: 허용되지 않은 경로가 로그에서 감지되었습니다.")
 			return
@@ -460,7 +421,6 @@ func (fm *FolderManager) Rollback() {
 				fmt.Printf("❌ 롤백 불가: 대상 '%s'가 존재하지 않습니다.\n", item.New)
 				return
 			}
-			// 생성 취소 시 폴더 내부 검사
 			if item.Old == "" && info.IsDir() {
 				entries, _ := os.ReadDir(item.New)
 				if len(entries) > 0 {
@@ -471,7 +431,6 @@ func (fm *FolderManager) Rollback() {
 		}
 	}
 
-	// 2. 실제 실행 (역순)
 	for i := len(task.Changes) - 1; i >= 0; i-- {
 		item := task.Changes[i]
 		if !fm.DryRun {
@@ -485,14 +444,13 @@ func (fm *FolderManager) Rollback() {
 		}
 	}
 
-	// 3. 남은 스택 업데이트
 	if !fm.DryRun {
-		stack = stack[:lastIdx] // 마지막 요소 제거
+		stack = stack[:lastIdx]
 		if len(stack) > 0 {
 			newData, _ := json.MarshalIndent(stack, "", "  ")
-			os.WriteFile(HISTORY_FILE, newData, 0600)
+			os.WriteFile(path, newData, 0600)
 		} else {
-			os.Remove(HISTORY_FILE)
+			os.Remove(path)
 		}
 	}
 
@@ -519,12 +477,43 @@ func (fm *FolderManager) FillGaps() {
 	fmt.Println("✅ 빈자리 채우기 완료.")
 }
 
+func (fm *FolderManager) SaveHistory(mode string) {
+	if fm.DryRun || len(fm.History) == 0 {
+		return
+	}
+
+	path := fm.HistoryPath
+	if path == "" {
+		path = HISTORY_FILE
+	}
+
+	var stack []HistoryData
+	if data, err := os.ReadFile(path); err == nil {
+		json.Unmarshal(data, &stack)
+	}
+
+	newAction := HistoryData{
+		Mode:      mode,
+		Changes:   fm.History,
+		Timestamp: time.Now().Format(TIME_FORMAT),
+	}
+	stack = append(stack, newAction)
+
+	file, _ := json.MarshalIndent(stack, "", "  ")
+	os.WriteFile(path, file, 0600)
+}
+
 func (fm *FolderManager) ClearHistory() {
-	if _, err := os.Stat(HISTORY_FILE); err == nil {
+	path := fm.HistoryPath
+	if path == "" {
+		path = HISTORY_FILE
+	}
+
+	if _, err := os.Stat(path); err == nil {
 		if fm.DryRun {
 			fm.Log("기록 삭제 시뮬레이션", "🔍")
 		} else {
-			err := os.Remove(HISTORY_FILE)
+			err := os.Remove(path)
 			if err != nil {
 				fmt.Println("❌ 오류: 기록 삭제 실패")
 				return
@@ -537,15 +526,13 @@ func (fm *FolderManager) ClearHistory() {
 }
 
 func (fm *FolderManager) UpdateTagKey(oldName, newName string) {
-	tags := loadTags()
-
-	// 1. 대소문자 및 경로 구분자 이슈 해결을 위해 정규화된 키로 비교
+	tags := fm.loadTags()
 	standardOld := filepath.Clean(oldName)
 	found := false
 	var actualKey string
 
 	for k := range tags {
-		if filepath.Clean(k) == standardOld {
+		if strings.EqualFold(filepath.Clean(k), standardOld) {
 			actualKey = k
 			found = true
 			break
@@ -554,26 +541,23 @@ func (fm *FolderManager) UpdateTagKey(oldName, newName string) {
 
 	if found {
 		tagValue := tags[actualKey]
-		delete(tags, actualKey)                  // 확실하게 기존 키 삭제
-		tags[filepath.Clean(newName)] = tagValue // 새 키는 정규화해서 저장
-		saveTags(tags)
+		delete(tags, actualKey)
+		tags[filepath.Clean(newName)] = tagValue
+		fm.saveTags(tags)
 	}
 }
 
 func (fm *FolderManager) AcquireLock() error {
-	// .json 폴더가 없으면 생성 (OS 의존성 없음)
 	if err := os.MkdirAll(fm.Config.DataDir, 0755); err != nil {
 		return fmt.Errorf("데이터 디렉토리 생성 실패: %v", err)
 	}
 
 	lockPath := filepath.Join(fm.Config.DataDir, ".fm.lock")
-	// os.O_EXCL: 파일이 이미 존재하면 에러를 발생시킴 (원자적 체크)
 	f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
-		return fmt.Errorf("이미 이 경로에서 다른 fm 프로세스가 실행 중입니다.\n직압증인게 이닐시 락 파일을 확인하세요,")
+		return fmt.Errorf("이미 이 경로에서 다른 fm 프로세스가 실행 중입니다.\n작업 중인 게 아닐 시 락 파일을 확인하세요.")
 	}
 
-	// 실행 중인 PID 기록 (디버깅용, 필수는 아님)
 	fmt.Fprintf(f, "%d", os.Getpid())
 	fm.lockFile = f
 	return nil
@@ -587,9 +571,16 @@ func (fm *FolderManager) ReleaseLock() {
 }
 
 func InitManager(dryRun bool) *FolderManager {
-	// 경로 설정 로직 삭제, 구조체만 반환
+	cfg := loadConfig()
+	if cfg.DataDir == "" {
+		cfg.DataDir = filepath.Dir(ConfigFile)
+	}
 	return &FolderManager{
-		DryRun: dryRun,
+		Config:      cfg,
+		DryRun:      dryRun,
+		ConfigPath:  filepath.Join(cfg.DataDir, filepath.Base(ConfigFile)),
+		HistoryPath: filepath.Join(cfg.DataDir, HISTORY_FILE),
+		TagsPath:    filepath.Join(cfg.DataDir, TagsFile),
 	}
 }
 
@@ -615,7 +606,7 @@ func main() {
 		fmt.Println("  fill, gaps, 채우기    : 빈 번호 채우기 정리 (예: fm fill)")
 		fmt.Println("  rollback, undo, 되돌리기     : 마지막 작업 되돌리기 (예: fm rollback)")
 		fmt.Println("  clear, reset, 비우기, 초기화     : 기록을 삭제하기 (예: fm clear)")
-		fmt.Println("  analyze, 분석     : 파일의 용량과 부여 된 태그를 분석 (예: fm analyze 3")
+		fmt.Println("  analyze, 분석     : 파일의 용량과 부여 된 태그를 분석 (예: fm analyze 3)")
 		fmt.Println("  tag, 태그, 유형     : 폴더에 태그 부여 (예: fm tag 3 실험)")
 		fmt.Println("  license     : 라이선스 정보 출력")
 		fmt.Println("\nOptions:")
@@ -632,7 +623,7 @@ func main() {
 	}
 
 	fm := InitManager(*dryRun)
-	fm.CheckPathSafety() // 경로 안전 검사 실행
+	fm.CheckPathSafety()
 
 	if err := fm.AcquireLock(); err != nil {
 		fmt.Printf("❌ %v\n", err)
