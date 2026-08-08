@@ -123,7 +123,6 @@ class FolderManager:
         # 락 파일 안전 해제를 위한 종료 이벤트 등록
         atexit.register(self._cleanup_lock)
         # 4. 확정된 경로로 다시 설정 로드
-        self.config = load_config(CONFIG_FILE)
         self._check_lock()
         self.dry_run = dry_run
         self.folder_pattern = re.compile(r'^(\d+)\_(.*)$')
@@ -487,12 +486,6 @@ class FolderManager:
         save_tags(tags)
         print(f"✅ 태그 등록 완료: {folders[target_num]} -> [{tag}]")
 
-    def _update_tag_key(self, old_name, new_name):
-        """폴더명이 바뀌면 태그 파일의 키값도 교체"""
-        tags = load_tags() # 기존 오리진의 함수 활용
-        if old_name in tags:
-            tags[new_name] = tags.pop(old_name)
-            save_tags(tags)
 # --- 3. 실행 인터페이스 ---
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "--license":
