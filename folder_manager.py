@@ -24,6 +24,7 @@ import re
 import shutil
 import argparse
 import json
+import atexit
 from datetime import datetime
 
 # --- 1. 상수 및 설정 ---
@@ -104,28 +105,30 @@ def save_tags(tags):
 
 
 # --- 2. 로직 클래스 ---
-# 이게 메서드들끼리 응집도가 매우 높아서 객체를 2개로 쪼개면 의존성 지옥에 걸리는지라 디버깅과 유지보수가 오히려 빡세집니다.
+# 이게 메서드들끼리 작동이 매우 긴밀하게 되는지라 2개로 쪼개면 의존성 지옥에 걸리는지라 디버깅과 유지보수가 오히려 빡세집니다.
 class FolderManager:
     #객체 설정
+# 객체 설정
     def __init__(self, dry_run=False):
-        # 1. 먼저 기본 config 로드 (이때는 기본 위치에서 읽음)
+        # 1. 결로 검증 및 락 소유권
+        self._check_path_safety()
+        self.has_lock = False 
+        # 2. 먼저 기본 config 로드 (이때는 기본 위치에서 읽음)
         base_config = load_config(CONFIG_FILE) 
         self.data_dir = base_config.get("data_dir", os.path.join(os.getcwd(), ".json"))
-        
         if not os.path.exists(self.data_dir):
             os.makedirs(self.data_dir, exist_ok=True)
-            
-        # 2. 모든 경로를 .json 폴더 내부로 확정 (인스턴스 변수화)
+        # 3. 모든 경로를 .json 폴더 내부로 확정 (인스턴스 변수화)
         self.lock_file_path = os.path.join(self.data_dir, ".fm.lock")
-        
-        # 3. 확정된 경로로 다시 설정 로드
+        # 락 파일 안전 해제를 위한 종료 이벤트 등록
+        atexit.register(self._cleanup_lock)
+        # 4. 확정된 경로로 다시 설정 로드
         self.config = load_config(CONFIG_FILE)
         self._check_lock()
         self.dry_run = dry_run
         self.folder_pattern = re.compile(r'^(\d+)\_(.*)$')
         self.history = []
-        self._check_path_safety()
-
+       
     def _check_lock(self):
         # .json 폴더 안의 락 파일 경로
         self.lock_file_path = os.path.join(self.data_dir, ".fm.lock")
@@ -135,6 +138,7 @@ class FolderManager:
             fd = os.open(self.lock_file_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
             with os.fdopen(fd, 'w') as f:
                 f.write(str(os.getpid()))
+            self.has_lock = True  # 정상 생성 성공 시에만 True 설정
         except FileExistsError:
             print("❌ 에러: 이미 동일한 경로에서 프로그램이 실행 중입니다. (.lock 파일 확인)")
             sys.exit(1)
@@ -142,14 +146,34 @@ class FolderManager:
             print(f"❌ 락 생성 중 오류 발생: {e}")
             sys.exit(1)
 
-    def __del__(self):
-        # 객체가 소멸될 때 (프로그램 종료 시) 락 파일 제거
-        # hasattr 체크는 초기화 도중 에러가 났을 때를 대비함
-        if hasattr(self, 'lock_file_path') and os.path.exists(self.lock_file_path):
+    def _cleanup_lock(self):
+        """atexit용 안전한 락 제거 함수"""
+        if getattr(self, 'has_lock', False) and os and os.path.exists(self.lock_file_path):
             try:
                 os.remove(self.lock_file_path)
-            except:
+            except Exception:
                 pass
+
+    def __del__(self):
+        # 기존 __del__의 유휴 정리 역할 수행
+        self._cleanup_lock()
+
+    def _update_tag_key(self, old_name, new_name):
+        """폴더명이 바뀌면 태그 파일의 키값도 교체 (Windows 대소문자/경로 정규화 호환)"""
+        tags = load_tags()
+        # 1. set_tag와 동일하게 old_name 정규화
+        old_key = os.path.normpath(old_name)
+        if os.name == 'nt':
+            old_key = old_key.lower()
+        # 2. 정규화된 키로 기존 태그 검색 및 교체
+        if old_key in tags:
+            val = tags.pop(old_key)
+            if new_name:
+                new_key = os.path.normpath(new_name)
+                if os.name == 'nt':
+                    new_key = new_key.lower()
+                tags[new_key] = val
+            save_tags(tags)
 
     def _check_path_safety(self):
         """민감한 시스템 경로에서의 실행 방지"""
@@ -237,7 +261,7 @@ class FolderManager:
         }
         stack.append(data)
 
-        # 안전한 직렬화: utf-8 명시 및 인젝션 방지를 위한 인자 설정
+        # 쓰기 경로도 HISTORY_FILE 로 변경
         with open(HISTORY_FILE, "w", encoding="utf-8") as f:
             json.dump(stack, f, ensure_ascii=False, indent=2)
 
@@ -346,11 +370,9 @@ class FolderManager:
         if not os.path.exists(HISTORY_FILE):
             print("❌ 오류: 되돌릴 작업 이력이 없습니다.")
             return
-
         try:
             with open(HISTORY_FILE, "r", encoding="utf-8") as f:
                 stack = json.load(f)
-            
             if not stack or not isinstance(stack, list):
                 print("❌ 오류: 기록이 비어있거나 유효하지 않습니다.")
                 return
@@ -407,7 +429,6 @@ class FolderManager:
                 json.dump(stack, f, ensure_ascii=False, indent=2)
         else:
             os.remove(HISTORY_FILE)
-            
         print(f"✅ [{mode}] 작업 롤백 완료. (남은 기록: {len(stack)}개)")
 
     def clear_history(self):
@@ -426,18 +447,13 @@ class FolderManager:
         if target_num not in folders:
             print(f"⚠️ {target_num:02d}번 폴더를 찾을 수 없습니다.")
             return
-        
         target_name = folders[target_num]
-        
-        # --- 추가된 태그 확인 로직 ---
         tags = load_tags()
         search_name = os.path.normpath(target_name)
         if os.name == 'nt':
             search_name = search_name.lower()
 
         folder_tag = tags.get(search_name, "없음")
-        # --------------------------
-
         ext_count = {}
         total_size = 0
         
