@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "folder-manager-py"
-version = "0.3.9" # 버전을 올리는 것을 권장합니다
+version = "0.3.8"
 authors = [{ name="Michelle", email="michellejang1972@gmail.com" }]
 description = "A number-based folder management and auto-alignment tool."
 readme = "README.md"
@@ -22,5 +22,4 @@ fm = "folder_manager:main"
 folder-manager-py = "folder_manager:main"
 
 [tool.setuptools]
-# 단일 .py 파일 모듈인 경우 py_modules에 명시해야 패키지에 포함됩니다.
 py-modules = ["folder_manager"]
